@@ -81,7 +81,8 @@ def _summary(final: dict) -> None:
         t.add_row(f"round {r['round']}", f"+{r['new_unique']} → {r['cumulative']} (yield {y})")
     cov = report.get("coverage") or {}
     if cov.get("chapman_estimate"):
-        t.add_row("Chapman estimate / coverage", f"{cov['chapman_estimate']} / {cov['coverage']:.1%}")
+        t.add_row("Chapman estimate / coverage",
+                  f"{cov['chapman_estimate']} / {cov['coverage']:.1%}")
     if report.get("stopped_reason"):
         t.add_row("stopped", report["stopped_reason"])
     console.print(t)
