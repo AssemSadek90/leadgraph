@@ -42,6 +42,8 @@ class RunState(TypedDict, total=False):
     companies: list[dict[str, Any]]
     filtered: list[dict[str, Any]]  # dropped before dedupe (closed, outside city)
     rejected: list[dict[str, Any]]  # classified as not a property manager
+    researched: Annotated[list[dict[str, Any]], operator.add]  # one item per research branch
+    research_stats: dict[str, Any]
     rounds: list[dict[str, Any]]
     saturation: list[dict[str, Any]]
     coverage: dict[str, Any]
@@ -72,6 +74,7 @@ class Mode:
     max_rounds: int = 1
     approve: str | None = None  # None → interactive interrupt; "all" | "none" | "1,3"
     extra_sources: list[str] = field(default_factory=list)
+    research: bool = False  # research agent + evidence verification after classify
 
 
 @dataclass

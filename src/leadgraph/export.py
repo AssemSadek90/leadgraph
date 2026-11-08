@@ -10,11 +10,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+KPI_COLUMNS = [
+    "units_managed", "management_types", "residential_focus", "portfolio_scope",
+    "tenant_portal_or_app", "software_mentioned", "metering_provider_mentioned",
+    "remote_reading_or_uvi_mentioned", "association_membership", "employee_count",
+]
 LEAD_COLUMNS = [
     "name", "address", "postcode", "website", "phone", "google_place_id", "google_rating",
     "google_review_count", "is_property_manager", "classification_category",
-    "classification_reason", "discovery_sources", "needs_review", "review_reasons", "id",
+    "classification_reason", *KPI_COLUMNS, "data_completeness", "discovery_sources",
+    "needs_review", "review_reasons", "id",
 ]
+EVIDENCE_COLUMNS = ["name", "field", "value", "source_url", "evidence", "confidence", "id"]
 EXCLUDED_COLUMNS = ["name", "reason", "address", "postcode", "website", "google_place_id", "source"]
 
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -44,9 +51,27 @@ def _write_sheet(wb: Workbook, title: str, columns: list[str], rows: list[dict[s
     ws.auto_filter.ref = ws.dimensions
 
 
+def flatten(company: dict[str, Any]) -> dict[str, Any]:
+    """Company dict with KPI values lifted to top-level columns."""
+    row = dict(company)
+    for f in KPI_COLUMNS:
+        row[f] = ((company.get("kpis") or {}).get(f) or {}).get("value")
+    return row
+
+
+def evidence_rows(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for c in companies:
+        for f in KPI_COLUMNS:
+            item = (c.get("kpis") or {}).get(f) or {}
+            if item.get("value") not in (None, []):
+                rows.append({"name": c["name"], "field": f, "id": c["id"], **item})
+    return rows
+
+
 def leads_and_excluded(companies: list[dict[str, Any]], excluded: list[dict[str, Any]]
                        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    leads = [c for c in companies if c.get("is_property_manager") is not False]
+    leads = [flatten(c) for c in companies if c.get("is_property_manager") is not False]
     return leads, excluded
 
 
@@ -114,6 +139,7 @@ def write_xlsx(path: Path, companies: list[dict[str, Any]], excluded: list[dict[
     _write_sheet(wb, "excluded", EXCLUDED_COLUMNS, excl)
     _write_blocks(wb, "coverage", coverage_blocks(coverage or {}))
     _write_sheet(wb, "sources", SOURCE_COLUMNS, sources or [])
+    _write_sheet(wb, "evidence", EVIDENCE_COLUMNS, evidence_rows(leads))
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
 

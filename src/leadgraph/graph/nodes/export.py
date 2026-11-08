@@ -86,6 +86,7 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
                                       for t in state.get("tiles") or []),
             "max_depth": max((t["depth"] for t in state.get("tiles") or []), default=None),
         },
+        "research": state.get("research_stats") or {},
         "coverage": state.get("coverage") or {},
         "saturation": state.get("saturation") or [],
         "sources": {

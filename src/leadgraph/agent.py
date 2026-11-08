@@ -45,6 +45,7 @@ class AgentTrace:
 async def run_tool_loop(
     llm: LLM, *, system: str, user: str, tools: list[Tool], final_schema: type[M],
     max_tool_calls: int, final_instruction: str, result_chars: int = 4000,
+    meter: dict[str, float] | None = None,
 ) -> tuple[M, AgentTrace]:
     by_name = {t.name: t for t in tools}
     schemas = [t.schema for t in tools]
@@ -53,7 +54,7 @@ async def run_tool_loop(
     used = 0
 
     for _ in range(max_tool_calls + 2):  # hard cap on turns
-        ai = await llm.chat_turn(messages, schemas)
+        ai = await llm.chat_turn(messages, schemas, meter=meter)
         trace.turns += 1
         messages.append(ai)
         if not ai.tool_calls:
@@ -87,7 +88,7 @@ async def run_tool_loop(
         trace.stop_reason = "turn_cap"
 
     messages.append(HumanMessage(final_instruction))
-    final = await llm.structured_messages(final_schema, messages)
+    final = await llm.structured_messages(final_schema, messages, meter=meter)
     return final, trace
 
 

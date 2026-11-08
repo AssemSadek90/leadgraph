@@ -69,6 +69,7 @@ class RunOptions:
     use_scout: bool = False
     approve: str | None = None
     extra_sources: list[str] = field(default_factory=list)
+    source_run: str | None = None  # enrich: the discovery run to start from
     run_id: str | None = None
     no_cache: bool = False
     outputs_dir: Path = OUTPUTS_DIR
@@ -96,7 +97,7 @@ def resolve_key(explicit: str | None, env_var: str, what: str) -> str:
 
 
 def make_run_id(city: str, area: str | None, command: str = "run") -> str:
-    prefix = "disc" if command == "discover" else "run"
+    prefix = {"discover": "disc", "enrich": "enr"}.get(command, "run")
     return f"{prefix}-{city}-{area or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
@@ -127,7 +128,9 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
         raise ValueError(f"Unknown provider '{opts.provider}'. Known: {sorted(models.providers)}")
     model = opts.model or provider_cfg.default_model
     llm_key = resolve_key(opts.llm_key, provider_cfg.env_key, opts.provider)
-    places_key = resolve_key(opts.places_key, models.places.env_key, "Google Places")
+    places_key = (opts.places_key or os.environ.get(models.places.env_key) or ""
+                  if opts.command == "enrich"  # enrich makes no Places calls
+                  else resolve_key(opts.places_key, models.places.env_key, "Google Places"))
     search_key = opts.search_key or os.environ.get(models.search.env_key)
     if opts.use_scout and not search_key:
         raise MissingKey(f"Search key missing for the scout: set {models.search.env_key} "
@@ -169,6 +172,7 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
         if opts.command == "discover" else 1,
         approve=opts.approve,
         extra_sources=list(opts.extra_sources),
+        research=opts.command in ("run", "enrich"),
     )
 
     async with httpx.AsyncClient() as api_http:
@@ -210,8 +214,12 @@ async def execute(opts: RunOptions, *, resume: bool = False, approver: Approver 
         db = run_dir(opts) / "checkpoints.sqlite"
         async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
             graph = build_graph(saver)
-            config = {"configurable": {"thread_id": opts.run_id}, "recursion_limit": 500}
+            config = {"configurable": {"thread_id": opts.run_id}, "recursion_limit": 500,
+                      "max_concurrency": ctx.settings.agents.research_concurrency}
             inp: Any = {"run_id": opts.run_id}
+            if opts.command == "enrich" and not resume:
+                inp = {**await load_final_state(opts.source_run or "", opts.outputs_dir),
+                       "run_id": opts.run_id}
             if resume:
                 snap = await graph.aget_state(config)
                 if not snap.next and not snap.interrupts:
@@ -228,6 +236,26 @@ async def execute(opts: RunOptions, *, resume: bool = False, approver: Approver 
                     inp = _resume_command(snap.interrupts[0].value, approver)
                     continue
                 return dict(snap.values)
+
+
+CARRY_OVER = ("companies", "filtered", "rejected", "rounds", "saturation", "coverage",
+              "query_stats", "queries_tried", "source_candidates", "approved_sources",
+              "source_stats", "scout_trace", "counts", "stopped_reason", "tiles")
+
+
+async def load_final_state(run_id: str, outputs_dir: Path = OUTPUTS_DIR) -> dict[str, Any]:
+    """Final graph state of a finished run (from its checkpoint), for `enrich`."""
+    db = outputs_dir / run_id / "checkpoints.sqlite"
+    if not db.exists():
+        raise FileNotFoundError(f"No checkpoints for run '{run_id}' in {outputs_dir}")
+    async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
+        snap = await build_graph(saver).aget_state({"configurable": {"thread_id": run_id}})
+    if snap.next or snap.interrupts:
+        raise RuntimeError(f"Run '{run_id}' has not finished; resume it first.")
+    values = dict(snap.values)
+    out = {k: values[k] for k in CARRY_OVER if k in values}
+    out["counts"] = {**(out.get("counts") or {}), "source_run": run_id}
+    return out
 
 
 def _resume_command(value: dict[str, Any], approver: Approver | None) -> Command:

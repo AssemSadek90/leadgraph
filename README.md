@@ -12,6 +12,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 |---|---|---|
 | M1 | Thin slice: Places search → dedupe → classify → xlsx + report.json | built, offline tests pass |
 | M2 | Discovery loop: quadtree sweep, scout agent + approval, list extraction, rounds, Chapman, checkpoints | built, offline tests pass |
+| M3 | Research agent (own domain only, ≤ 6 tool calls) → KPIs with evidence → verify_evidence; Send fan-out; `enrich` | built, offline tests pass |
 
 ## Setup (Windows, PowerShell)
 
@@ -45,6 +46,9 @@ uv run leadgraph run --city berlin --area mitte --limit 20 --provider anthropic 
 uv run leadgraph discover --city berlin --area mitte --max-places-requests 300
 uv run leadgraph discover --city berlin --max-places-requests 4000 --max-llm-cost 5
 uv run leadgraph resume <run_id>                  # after Ctrl+C, a crash, or a pause
+
+# M3 enrichment of a finished discovery run (research agent + evidence checks)
+uv run leadgraph enrich <discover_run_id> --limit 30 --max-llm-cost 2
 uv run leadgraph recall <run_id>                  # recall probes from eval/recall_probes.csv
 ```
 

@@ -79,6 +79,13 @@ def _summary(final: dict) -> None:
     for r in report.get("rounds") or []:
         y = "—" if r["yield"] is None else f"{r['yield']:.1%}"
         t.add_row(f"round {r['round']}", f"+{r['new_unique']} → {r['cumulative']} (yield {y})")
+    res = report.get("research") or {}
+    if res.get("researched"):
+        t.add_row("researched (ok)", f"{res['researched']} ({res['succeeded']})")
+        t.add_row("≥ 3 KPIs / avg KPIs", f"{res['share_with_3plus_kpis']:.0%} / "
+                                         f"{res['avg_non_null_kpis']}")
+        t.add_row("tool calls avg / max", f"{res['avg_tool_calls']} / {res['max_tool_calls']}")
+        t.add_row("research cost / company", f"${res['avg_cost_usd']}")
     cov = report.get("coverage") or {}
     if cov.get("chapman_estimate"):
         t.add_row("Chapman estimate / coverage",
@@ -110,7 +117,7 @@ def run(
     run_id: Annotated[str | None, typer.Option(help="Run id (default: generated).")] = None,
     no_cache: Annotated[bool, typer.Option("--no-cache", help="Bypass the disk cache.")] = False,
 ) -> None:
-    """Thin end-to-end run: one Places search of the area → dedupe → classify → export."""
+    """Thin end-to-end run: one Places search of the area → classify → research → export."""
     opts = RunOptions(
         city=city, command="run", area=area, segment=segment, limit=limit, provider=provider,
         model=model, llm_key=llm_key, places_key=places_key,
@@ -156,6 +163,32 @@ def discover(
         search_key=search_key, max_places_requests=max_places_requests,
         max_llm_cost=max_llm_cost, max_search_requests=max_search_requests,
         places_tier=places_tier, run_id=run_id,
+    )
+    _summary(_execute(opts))
+
+
+@app.command()
+def enrich(
+    source_run: Annotated[str, typer.Argument(help="Finished discover run to enrich.")],
+    limit: Annotated[int | None, typer.Option(help="Research at most N companies.")] = None,
+    provider: Annotated[str | None, typer.Option(
+        help="LLM provider (default: the source run's).")] = None,
+    model: Annotated[str | None, typer.Option(help="Model id (default from models.yaml).")] = None,
+    llm_key: Annotated[str | None, typer.Option(help="LLM API key (default: env var).")] = None,
+    max_llm_cost: Annotated[float | None, typer.Option(help="Budget: LLM cost in USD.")] = None,
+    run_id: Annotated[str | None, typer.Option(help="Run id (default: generated).")] = None,
+) -> None:
+    """Research agent + evidence checks for every property manager of a discover run."""
+    try:
+        src = load_run_options(source_run)
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
+    opts = RunOptions(
+        city=src.city, command="enrich", area=src.area, segment=src.segment,
+        provider=provider or src.provider, model=model if (model or provider) else src.model,
+        llm_key=llm_key, max_llm_cost=max_llm_cost, limit=limit, source_run=source_run,
+        run_id=run_id, approve="none",
     )
     _summary(_execute(opts))
 

@@ -31,6 +31,9 @@ discovery:
 agents:
   scout_max_tool_calls: 15
   tool_result_chars: 4000
+  research_max_tool_calls: 6     # per company, after the homepage (fetched in code)
+  research_page_chars: 5000      # page text shown to the research agent per fetch
+  research_concurrency: 6        # companies researched in parallel (LangGraph max_concurrency)
 
 places:
   tier: pro                      # pro: cheap sweep + Place Details for Berlin companies; enterprise: plan's mask

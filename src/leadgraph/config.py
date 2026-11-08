@@ -144,6 +144,9 @@ class DiscoverySettings(BaseModel):
 class AgentSettings(BaseModel):
     scout_max_tool_calls: int = 15
     tool_result_chars: int = 4000
+    research_max_tool_calls: int = 6
+    research_page_chars: int = 5000
+    research_concurrency: int = 6
 
 
 class Settings(BaseModel):

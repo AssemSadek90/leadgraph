@@ -141,6 +141,13 @@ class Fetcher:
         return rp
 
     # --- public -------------------------------------------------------------------
+    def cached(self, url: str) -> FetchResult | None:
+        """The cached result for `url` without any network access (None if never fetched)."""
+        if not urlparse(url).scheme:
+            url = "https://" + url
+        hit = self.cache.get("http", url)
+        return FetchResult(**hit, from_cache=True) if hit is not None else None
+
     async def fetch(self, url: str, allowed_domain: str | None = None) -> FetchResult:
         if not urlparse(url).scheme:
             url = "https://" + url

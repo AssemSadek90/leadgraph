@@ -99,6 +99,18 @@ def responder(schema, messages):
     if name == "QueryExpansion":
         tried = [ln for ln in text.splitlines() if ln.startswith("- ")]
         return {"queries": EXPANSIONS.get(len(tried), [])}
+    if name == "CompanyKPIsOut":
+        home = next(m.content for m in messages if "Homepage:" in str(m.content))
+        url = re.search(r"URL: (\S+)", home).group(1)
+        k = {f: {"value": None, "source_url": None, "evidence": None, "confidence": None}
+             for f in ("units_managed", "management_types", "residential_focus", "portfolio_scope",
+                       "tenant_portal_or_app", "software_mentioned", "metering_provider_mentioned",
+                       "remote_reading_or_uvi_mentioned", "association_membership",
+                       "employee_count")}
+        k["management_types"] = {"value": ["WEG", "MIET"], "source_url": url,
+                                 "evidence": "WEG-Verwaltung und Mietverwaltung",
+                                 "confidence": "high"}
+        return k
     if name == "Classification":
         if "makler" in text.lower() and "Spree Makler" in text:
             return {"category": "makler", "confidence": "high", "reason": "Sales only."}
@@ -202,7 +214,7 @@ async def test_discovery_loop_with_approval_crash_and_resume(tmp_path, models):
     # classification + export
     assert report["counts"]["leads"] == 14 and report["counts"]["not_property_managers"] == 1
     wb = load_workbook(final["outputs"]["xlsx"])
-    assert wb.sheetnames == ["leads", "excluded", "coverage", "sources"]
+    assert wb.sheetnames == ["leads", "excluded", "coverage", "sources", "evidence"]
     src_rows = list(wb["sources"].iter_rows(values_only=True))
     assert len(src_rows) == 3  # header + DIR1 (approved) + DIR2 (not approved)
     approved_by = {r[0]: r[4] for r in src_rows[1:]}
@@ -218,3 +230,39 @@ async def test_discovery_loop_with_approval_crash_and_resume(tmp_path, models):
     # 4) resuming a finished run is a no-op
     again = await execute(opts, resume=True, approver=approver, patch_ctx=patch)
     assert again.get("_already_finished") is True
+
+
+@respx.mock
+async def test_enrich_from_finished_discovery(tmp_path, models):
+    places = QueryPlaces()
+    places.fail_once = set()
+    mount_world(places)
+    chat = ScriptedChat(responder, scout_script)
+
+    def patch(ctx):
+        ctx.settings.fetch.per_domain_interval_s = 0
+        ctx.deps.llm = LLM(chat, provider="anthropic", model="claude-haiku-5-5",
+                           cache=ctx.deps.cache, usage=ctx.deps.usage, models_cfg=models)
+
+    disc = RunOptions(city="berlin", command="discover", area="mitte", use_scout=True,
+                      approve="1", max_rounds=5, llm_key="x", places_key="x", search_key="x",
+                      run_id="disc-e", outputs_dir=tmp_path)
+    await execute(disc, patch_ctx=patch)
+    calls_before = places.queries[:]
+
+    enr = RunOptions(city="berlin", command="enrich", source_run="disc-e", limit=3,
+                     llm_key="x", run_id="enr-e", outputs_dir=tmp_path, approve="none")
+    final = await execute(enr, patch_ctx=patch)
+    assert places.queries == calls_before  # enrich makes no Places calls
+    assert len(final["researched"]) == 3  # --limit 3
+    stats = final["research_stats"]
+    assert stats["succeeded"] == 3 and stats["max_tool_calls"] <= 6
+    researched = [c for c in final["companies"] if c.get("kpis")]
+    assert len(researched) == 3
+    assert all(c["kpis"]["management_types"]["value"] == ["WEG", "MIET"] for c in researched)
+    # discovery results are carried over into the enrich export
+    report = json.loads((tmp_path / "enr-e" / "report.json").read_text())
+    assert report["coverage"]["union"] == 15 and len(report["rounds"]) == 4
+    wb = load_workbook(final["outputs"]["xlsx"])
+    ev = list(wb["evidence"].iter_rows(values_only=True))
+    assert len(ev) == 1 + 3 and ev[1][1] == "management_types"

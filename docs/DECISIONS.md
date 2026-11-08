@@ -17,3 +17,7 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D11 | M2 | `usage.json` persists paid-call counters; resume seeds them | The budget guard must hold across kills and resumes (BYOK safety) |
 | D12 | M2 | List entries keep a website only if its domain literally appears in the page chunk | Anti-hallucination for extract_lists (P2) |
 | D13 | M2 | `leadgraph recall` + `eval/recall_probes.csv` | Recall-probe gate item, reusable in M5/M6 |
+| D14 | M3 | The homepage is fetched in code and given to the research agent; the ≤ 6 tool calls go to subpages | "Start at the homepage" without spending a tool call on it |
+| D15 | M3 | verify_evidence also checks values against their quote: numbers must appear in the evidence, list items must be named in it | Catches a real quote paired with a wrong value |
+| D16 | M3 | KPI values are columns in `leads`; quotes and URLs go to an `evidence` sheet (one row per value) | Keeps `leads` readable while every value stays auditable |
+| D17 | M3 | `leadgraph enrich <discover_run>` starts from the discovery run's final checkpoint state; `run` includes research | Monday's overnight enrichment needs Sunday's discovery as input; discovery stats carry over into the final sheet |

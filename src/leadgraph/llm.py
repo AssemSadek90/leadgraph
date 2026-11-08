@@ -68,30 +68,45 @@ class LLM:
         self.method = method or (prov.structured_method if prov else "function_calling")
         self._sem = asyncio.Semaphore(concurrency)
 
-    def _record(self, raw: Any) -> tuple[int, int]:
+    def _record(self, raw: Any, meter: dict[str, float] | None = None) -> tuple[int, int]:
         meta = getattr(raw, "usage_metadata", None) or {}
         in_tok = int(meta.get("input_tokens", 0) or 0)
         out_tok = int(meta.get("output_tokens", 0) or 0)
-        self.usage.add_llm(self.model, in_tok, out_tok,
-                           self.price.input_per_mtok, self.price.output_per_mtok)
+        cost = self.usage.add_llm(self.model, in_tok, out_tok,
+                                  self.price.input_per_mtok, self.price.output_per_mtok)
+        if meter is not None:  # per-company accounting (research agent)
+            meter["llm_calls"] = meter.get("llm_calls", 0) + 1
+            meter["input_tokens"] = meter.get("input_tokens", 0) + in_tok
+            meter["output_tokens"] = meter.get("output_tokens", 0) + out_tok
+            meter["cost_usd"] = meter.get("cost_usd", 0.0) + cost
         return in_tok, out_tok
 
-    async def structured(self, schema: type[M], system: str, user: str) -> M:
-        key = (self.provider, self.model, schema.__name__, schema.model_json_schema(), system, user)
-        return await self._structured(schema, [SystemMessage(system), HumanMessage(user)], key)
+    @staticmethod
+    def _hit(meter: dict[str, float] | None) -> None:
+        if meter is not None:
+            meter["cache_hits"] = meter.get("cache_hits", 0) + 1
 
-    async def structured_messages(self, schema: type[M], messages: list[BaseMessage]) -> M:
+    async def structured(self, schema: type[M], system: str, user: str,
+                         meter: dict[str, float] | None = None) -> M:
+        key = (self.provider, self.model, schema.__name__, schema.model_json_schema(), system, user)
+        return await self._structured(schema, [SystemMessage(system), HumanMessage(user)], key,
+                                      meter)
+
+    async def structured_messages(self, schema: type[M], messages: list[BaseMessage],
+                                  meter: dict[str, float] | None = None) -> M:
         key = (self.provider, self.model, schema.__name__, schema.model_json_schema(),
                [message_key(m) for m in messages])
-        return await self._structured(schema, messages, key)
+        return await self._structured(schema, messages, key, meter)
 
-    async def chat_turn(self, messages: list[BaseMessage], tools: list[Any]) -> AIMessage:
+    async def chat_turn(self, messages: list[BaseMessage], tools: list[Any],
+                        meter: dict[str, float] | None = None) -> AIMessage:
         """One tool-calling turn (agent loops). Cached by the full conversation."""
         tool_specs = [convert_to_openai_tool(t) for t in tools]
         key = (self.provider, self.model, "chat_turn", tool_specs,
                [message_key(m) for m in messages])
         hit = self.cache.get("llm", *key)
         if hit is not None:
+            self._hit(meter)
             return messages_from_dict([hit["message"]])[0]
         self.usage.check_llm()
         async with self._sem:
@@ -101,13 +116,15 @@ class LLM:
             except Exception:
                 self.usage.llm_errors += 1
                 raise
-        self._record(msg)
+        self._record(msg, meter)
         self.cache.set("llm", *key, value={"message": message_to_dict(msg)})
         return msg
 
-    async def _structured(self, schema: type[M], messages: list[BaseMessage], key: tuple) -> M:
+    async def _structured(self, schema: type[M], messages: list[BaseMessage], key: tuple,
+                          meter: dict[str, float] | None = None) -> M:
         hit = self.cache.get("llm", *key)
         if hit is not None:
+            self._hit(meter)
             return schema.model_validate(hit["parsed"])
 
         self.usage.check_llm()
@@ -121,7 +138,7 @@ class LLM:
                 raise
 
         raw = out.get("raw") if isinstance(out, dict) else None
-        in_tok, out_tok = self._record(raw)
+        in_tok, out_tok = self._record(raw, meter)
 
         parsed = out.get("parsed") if isinstance(out, dict) else out
         if parsed is None or (isinstance(out, dict) and out.get("parsing_error")):
