@@ -17,7 +17,7 @@ from leadgraph.usage import Usage
 
 pytestmark = pytest.mark.live
 LIVE_ENV = {k: os.environ.get(k) for k in
-            ("GOOGLE_PLACES_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY")}
+            ("GOOGLE_PLACES_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SERPER_API_KEY")}
 
 
 @pytest.fixture
@@ -59,3 +59,28 @@ async def test_llm_structured(provider, live_env, tmp_path):
     )
     print(f"\n{provider}/{cfg.default_model}: {out} tokens={usage.input_tokens}/{usage.output_tokens}")
     assert out.category == "hausverwaltung"
+
+
+@pytest.mark.skipif(not LIVE_ENV["SERPER_API_KEY"], reason="no SERPER_API_KEY")
+async def test_serper_search(live_env, tmp_path):
+    from leadgraph.sources.search import SerperClient
+    usage = Usage(max_places_requests=0, max_llm_cost_usd=0, max_search_requests=1)
+    async with httpx.AsyncClient() as http:
+        hits = await SerperClient(os.environ["SERPER_API_KEY"], http, Cache(tmp_path), usage
+                                  ).search("Hausverwaltung Berlin site:vdiv.de")
+    assert hits
+    print(f"\n{len(hits)} hits, first: {hits[0].title} {hits[0].url}")
+
+
+@pytest.mark.skipif(not LIVE_ENV["GOOGLE_PLACES_API_KEY"], reason="no GOOGLE_PLACES_API_KEY")
+async def test_place_details(live_env, tmp_path):
+    s = load_settings()
+    s.places.max_pages = 1
+    usage = Usage(max_places_requests=2, max_llm_cost_usd=0)
+    async with httpx.AsyncClient() as http:
+        client = PlacesClient(os.environ["GOOGLE_PLACES_API_KEY"], http, Cache(tmp_path),
+                              usage, s.places)
+        res = await client.search("Hausverwaltung", load_city("berlin").area("mitte"))
+        d = await client.details(res.places[0]["id"])
+    print(f"\ndetails: {d}")
+    assert usage.places_by_sku == {"text_search_pro": 1, "place_details_enterprise": 1}

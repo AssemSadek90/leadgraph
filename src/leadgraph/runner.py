@@ -1,15 +1,25 @@
-"""Wires config, clients and the graph together for one run (used by the CLI)."""
+"""Wires config, clients and the graph together for one run (used by the CLI).
+
+Each run lives in outputs/<run_id>/: run.json (options, never keys), checkpoints.sqlite
+(LangGraph state, thread_id = run_id), usage.json (paid-call counters, so the budget
+holds across resumes), tiles.jsonl, leads.xlsx and report.json.
+"""
 
 from __future__ import annotations
 
+import json
 import os
 import time
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.types import Command
 
 from leadgraph.cache import Cache
 from leadgraph.config import (
@@ -20,20 +30,29 @@ from leadgraph.config import (
     load_settings,
 )
 from leadgraph.graph.build import build_graph
-from leadgraph.graph.state import Deps, RunContext
+from leadgraph.graph.state import Deps, Mode, RunContext
 from leadgraph.llm import LLM, get_model
 from leadgraph.sources.places import PlacesClient
+from leadgraph.sources.search import SerperClient
 from leadgraph.usage import Usage
 from leadgraph.web.fetch import Fetcher
+
+SECRET_FIELDS = ("llm_key", "places_key", "search_key")
+Approver = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 class MissingKey(RuntimeError):
     pass
 
 
+class NeedsApproval(RuntimeError):
+    pass
+
+
 @dataclass
 class RunOptions:
     city: str
+    command: str = "run"
     segment: str = "hausverwaltung"
     area: str | None = None
     limit: int | None = None
@@ -41,11 +60,31 @@ class RunOptions:
     model: str | None = None
     llm_key: str | None = None
     places_key: str | None = None
+    search_key: str | None = None
     max_places_requests: int | None = None
     max_llm_cost: float | None = None
+    max_search_requests: int | None = None
+    places_tier: str | None = None
+    max_rounds: int | None = None
+    use_scout: bool = False
+    approve: str | None = None
+    extra_sources: list[str] = field(default_factory=list)
     run_id: str | None = None
     no_cache: bool = False
     outputs_dir: Path = OUTPUTS_DIR
+
+    def public(self) -> dict[str, Any]:
+        """Options safe to write to disk (no keys)."""
+        d = asdict(self)
+        for k in SECRET_FIELDS:
+            d.pop(k, None)
+        d["outputs_dir"] = str(self.outputs_dir)
+        return d
+
+    @classmethod
+    def from_public(cls, d: dict[str, Any], **overrides: Any) -> RunOptions:
+        d = {**d, "outputs_dir": Path(d["outputs_dir"]), **overrides}
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 def resolve_key(explicit: str | None, env_var: str, what: str) -> str:
@@ -56,11 +95,27 @@ def resolve_key(explicit: str | None, env_var: str, what: str) -> str:
     return key
 
 
-def make_run_id(city: str, area: str | None) -> str:
-    return f"{city}-{area or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+def make_run_id(city: str, area: str | None, command: str = "run") -> str:
+    prefix = "disc" if command == "discover" else "run"
+    return f"{prefix}-{city}-{area or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
-async def execute(opts: RunOptions, command: str = "run") -> dict[str, Any]:
+def run_dir(opts: RunOptions) -> Path:
+    assert opts.run_id
+    return opts.outputs_dir / opts.run_id
+
+
+def load_run_options(run_id: str, outputs_dir: Path = OUTPUTS_DIR, **overrides: Any) -> RunOptions:
+    path = outputs_dir / run_id / "run.json"
+    if not path.exists():
+        raise FileNotFoundError(f"No run.json for run '{run_id}' in {outputs_dir}")
+    return RunOptions.from_public(json.loads(path.read_text(encoding="utf-8")), **overrides)
+
+
+@asynccontextmanager
+async def run_context(opts: RunOptions, *, resumed: bool = False,
+                      patch_ctx: Callable[[RunContext], None] | None = None
+                      ) -> AsyncIterator[RunContext]:
     models = load_models()
     settings = load_settings()
     city = load_city(opts.city)
@@ -73,43 +128,109 @@ async def execute(opts: RunOptions, command: str = "run") -> dict[str, Any]:
     model = opts.model or provider_cfg.default_model
     llm_key = resolve_key(opts.llm_key, provider_cfg.env_key, opts.provider)
     places_key = resolve_key(opts.places_key, models.places.env_key, "Google Places")
+    search_key = opts.search_key or os.environ.get(models.search.env_key)
+    if opts.use_scout and not search_key:
+        raise MissingKey(f"Search key missing for the scout: set {models.search.env_key} "
+                         f"or pass --no-scout.")
 
+    b = settings.budget
     if opts.max_places_requests is not None:
-        settings.budget.max_places_requests = opts.max_places_requests
+        b.max_places_requests = opts.max_places_requests
     if opts.max_llm_cost is not None:
-        settings.budget.max_llm_cost_usd = opts.max_llm_cost
+        b.max_llm_cost_usd = opts.max_llm_cost
+    if opts.max_search_requests is not None:
+        b.max_search_requests = opts.max_search_requests
+    if opts.places_tier:
+        settings.places.tier = opts.places_tier  # type: ignore[assignment]
 
-    run_id = opts.run_id or make_run_id(opts.city, opts.area)
+    out = run_dir(opts)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "run.json").write_text(json.dumps(opts.public(), indent=2), encoding="utf-8")
+
     cache = Cache(opts.outputs_dir / ".cache", enabled=not opts.no_cache)
-    usage = Usage(
-        max_places_requests=settings.budget.max_places_requests,
-        max_llm_cost_usd=settings.budget.max_llm_cost_usd,
-        places_usd_per_request=models.places.usd_per_request,
-    )
+    usage = Usage(max_places_requests=b.max_places_requests, max_llm_cost_usd=b.max_llm_cost_usd,
+                  max_search_requests=b.max_search_requests,
+                  places_sku_usd_per_1000=models.places.sku_usd_per_1000)
+    usage_path = out / "usage.json"
+    if resumed and usage_path.exists():
+        usage.load_counters(json.loads(usage_path.read_text(encoding="utf-8")))
+
     temperature = settings.llm.temperature if provider_cfg.send_temperature else None
     chat = get_model(opts.provider, model, llm_key,
                      temperature=temperature, max_retries=settings.llm.max_retries)
     llm = LLM(chat, provider=opts.provider, model=model, cache=cache, usage=usage,
               models_cfg=models, concurrency=settings.llm.concurrency)
+    mode = Mode(
+        command=opts.command,
+        queries=[] if opts.command == "discover" else segment.queries[:1],
+        quadtree=opts.command == "discover",
+        use_scout=opts.use_scout,
+        max_rounds=(opts.max_rounds or settings.discovery.max_rounds)
+        if opts.command == "discover" else 1,
+        approve=opts.approve,
+        extra_sources=list(opts.extra_sources),
+    )
 
-    async with httpx.AsyncClient() as places_http:
+    async with httpx.AsyncClient() as api_http:
         fetcher = Fetcher(settings.fetch, cache, usage)
         try:
-            places = PlacesClient(places_key, places_http, cache, usage, settings.places)
             ctx = RunContext(
-                run_id=run_id, city=city, segment=segment, settings=settings, models=models,
-                provider=opts.provider, model=model, area_name=opts.area, limit=opts.limit,
-                outputs_dir=opts.outputs_dir,
-                deps=Deps(cache=cache, usage=usage, places=places, fetcher=fetcher, llm=llm),
+                run_id=opts.run_id or "", city=city, segment=segment, settings=settings,
+                models=models, provider=opts.provider, model=model, mode=mode,
+                area_name=opts.area, limit=opts.limit, outputs_dir=opts.outputs_dir,
+                deps=Deps(
+                    cache=cache, usage=usage, fetcher=fetcher, llm=llm,
+                    places=PlacesClient(places_key, api_http, cache, usage, settings.places),
+                    search=SerperClient(search_key, api_http, cache, usage) if search_key else None,
+                ),
                 run_meta={
-                    "command": command,
+                    "command": opts.command,
+                    "resumed": resumed,
+                    "places_tier": settings.places.tier,
                     "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
                     "started_monotonic": time.monotonic(),
                 },
+                usage_path=usage_path,
             )
-            graph = build_graph()
-            final = await graph.ainvoke({"run_id": run_id}, context=ctx)
+            if patch_ctx is not None:  # tests swap in fakes here
+                patch_ctx(ctx)
+            yield ctx
         finally:
+            usage_path.write_text(json.dumps(usage.to_counters(), indent=2), encoding="utf-8")
             await fetcher.aclose()
             cache.close()
-    return final
+
+
+async def execute(opts: RunOptions, *, resume: bool = False, approver: Approver | None = None,
+                  patch_ctx: Callable[[RunContext], None] | None = None) -> dict[str, Any]:
+    """Run (or resume) a graph thread until it finishes, asking `approver` at interrupts."""
+    if not opts.run_id:
+        opts.run_id = make_run_id(opts.city, opts.area, opts.command)
+    async with run_context(opts, resumed=resume, patch_ctx=patch_ctx) as ctx:
+        db = run_dir(opts) / "checkpoints.sqlite"
+        async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
+            graph = build_graph(saver)
+            config = {"configurable": {"thread_id": opts.run_id}, "recursion_limit": 500}
+            inp: Any = {"run_id": opts.run_id}
+            if resume:
+                snap = await graph.aget_state(config)
+                if not snap.next and not snap.interrupts:
+                    return {**snap.values, "_already_finished": True}
+                inp = None
+            while True:
+                if inp is None:
+                    snap = await graph.aget_state(config)
+                    if snap.interrupts:
+                        inp = _resume_command(snap.interrupts[0].value, approver)
+                await graph.ainvoke(inp, config, context=ctx)
+                snap = await graph.aget_state(config)
+                if snap.interrupts:
+                    inp = _resume_command(snap.interrupts[0].value, approver)
+                    continue
+                return dict(snap.values)
+
+
+def _resume_command(value: dict[str, Any], approver: Approver | None) -> Command:
+    if approver is None:
+        raise NeedsApproval(value)
+    return Command(resume=approver(value))

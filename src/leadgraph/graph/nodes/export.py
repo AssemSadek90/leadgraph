@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -13,9 +14,49 @@ from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
 
 
+def excluded_rows(state: RunState) -> list[dict[str, Any]]:
+    return list(state.get("filtered") or []) + list(state.get("rejected") or [])
+
+
+def coverage_sheet_data(state: RunState) -> dict[str, Any]:
+    return {
+        "rounds": state.get("rounds") or [],
+        "saturation": state.get("saturation") or [],
+        "stats": state.get("coverage") or {},
+        "query_stats": state.get("query_stats") or [],
+        "stopped_reason": state.get("stopped_reason"),
+    }
+
+
+def sources_sheet_rows(state: RunState) -> list[dict[str, Any]]:
+    """Every scouted or added source, approved or not, with what it contributed."""
+    companies = state.get("companies") or []
+    stats = state.get("source_stats") or {}
+    approved = {s["url"]: s for s in state.get("approved_sources") or []}
+    rows: list[dict[str, Any]] = []
+    urls = list(approved) + [c["url"] for c in state.get("source_candidates") or []
+                             if c["url"] not in approved]
+    cands = {c["url"]: c for c in state.get("source_candidates") or []}
+    for url in urls:
+        meta = approved.get(url) or {**cands.get(url, {}), "approved_by": "not approved"}
+        st = stats.get(url, {})
+        src = st.get("source")
+        found = [c for c in companies if src and src in c.get("discovery_sources", [])]
+        only = [c for c in found if all(s == src for s in c.get("discovery_sources", []))]
+        rows.append({
+            **{k: meta.get(k) for k in ("url", "source_type", "estimated_count", "approved_by",
+                                        "notes")},
+            **{k: st.get(k) for k in ("source", "pages", "entries", "looked_up",
+                                      "matched_on_places", "errors")},
+            "companies_found": len(found) if src else None,
+            "only_found_here": len(only) if src else None,
+        })
+    return rows
+
+
 def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
     usage = ctx.deps.usage.to_dict()
-    leads, excluded = leads_and_excluded(state.get("companies", []), state.get("excluded", []))
+    leads, excluded = leads_and_excluded(state.get("companies", []), excluded_rows(state))
     started = ctx.run_meta.get("started_monotonic")
     return {
         "run_id": ctx.run_id,
@@ -36,6 +77,23 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
             "total": round(usage["llm_cost_estimate_usd"] + usage["places_cost_estimate_usd"], 4),
         },
         "stopped_reason": state.get("stopped_reason"),
+        "rounds": state.get("rounds") or [],
+        "queries_tried": state.get("queries_tried") or [],
+        "query_stats": state.get("query_stats") or [],
+        "tiles": {
+            "count": len(state.get("tiles") or []),
+            "capped_at_min_size": sum(t["capped"] and not t["split"]
+                                      for t in state.get("tiles") or []),
+            "max_depth": max((t["depth"] for t in state.get("tiles") or []), default=None),
+        },
+        "coverage": state.get("coverage") or {},
+        "saturation": state.get("saturation") or [],
+        "sources": {
+            "scouted": state.get("source_candidates") or [],
+            "approved": state.get("approved_sources") or [],
+            "per_source": state.get("source_stats") or {},
+            "scout_trace": state.get("scout_trace") or {},
+        },
     }
 
 
@@ -44,6 +102,11 @@ async def export(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any
     ctx = runtime.context
     out_dir = ctx.outputs_dir / ctx.run_id
     xlsx, report_path = out_dir / "leads.xlsx", out_dir / "report.json"
-    write_xlsx(xlsx, state.get("companies", []), state.get("excluded", []))
+    write_xlsx(xlsx, state.get("companies", []), excluded_rows(state),
+               coverage=coverage_sheet_data(state), sources=sources_sheet_rows(state))
     write_report(report_path, build_report(state, ctx))
-    return {"outputs": {"xlsx": str(xlsx), "report": str(report_path)}}
+    with (out_dir / "companies.jsonl").open("w", encoding="utf-8") as f:  # all discovered
+        for c in state.get("companies", []):
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
+    return {"outputs": {"xlsx": str(xlsx), "report": str(report_path),
+                        "companies": str(out_dir / "companies.jsonl")}}

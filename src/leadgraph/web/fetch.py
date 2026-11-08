@@ -55,6 +55,7 @@ class FetchResult:
     title: str | None = None
     text: str = ""  # trafilatura main text
     full_text: str = ""  # all visible text (selectolax)
+    text_with_links: str = ""  # visible text with links inline as `anchor <url>`
     links: list[tuple[str, str]] = field(default_factory=list)
     error: str | None = None
     from_cache: bool = False
@@ -183,6 +184,7 @@ class Fetcher:
             result.title = extract.title(html)
             result.text = extract.main_text(html, result.final_url)
             result.full_text = extract.full_text(html)
+            result.text_with_links = extract.text_with_links(html, result.final_url)
             result.links = extract.links(html, result.final_url)
         if not result.ok:
             self.usage.fetch_errors += 1

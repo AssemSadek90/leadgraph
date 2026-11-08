@@ -4,6 +4,7 @@
 Agentic lead-research pipeline: discovers companies of a segment in a city, classifies them,
 extracts KPIs with evidence, scores them, and exports a spreadsheet plus a coverage report.
 Full plan: docs/BUILD_PLAN.md. Data contract: Section 3 of that file.
+Deviations from the plan (read before changing behaviour): docs/DECISIONS.md.
 
 ## Stack (do not substitute without asking)
 Python 3.12, uv, LangGraph (+ langgraph-checkpoint-sqlite), langchain init_chat_model with

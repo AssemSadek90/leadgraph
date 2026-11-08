@@ -100,3 +100,13 @@ def test_apply_filters_drops_closed_and_non_berlin(city):
     assert reasons["Closed"] == "closed_permanently"
     assert reasons["Potsdam HV"].startswith("outside_city_postcode")
     assert reasons["Schönefeld HV"].startswith("outside_city_locality")
+
+
+def test_name_similarity():
+    from leadgraph.dedupe import name_similarity
+    assert name_similarity("Hausverwaltung Müller GmbH", "Müller Hausverwaltung") == 1.0
+    assert name_similarity("Hausverwaltung Müller", "Hausverwaltung Schmidt") == 0.0
+    assert name_similarity("Grieger Immobilien Management", "Grieger Hausverwaltung GmbH") == 1.0
+    assert name_similarity("Hausverwaltung", "Hausverwaltung GmbH") == 1.0
+    assert name_similarity("Hausverwaltung", "Immobilienverwaltung") == 0.0
+    assert 0 < name_similarity("Alpha Beta Verwaltung", "Alpha Gamma Verwaltung") < 0.5

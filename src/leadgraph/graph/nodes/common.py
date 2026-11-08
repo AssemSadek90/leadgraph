@@ -24,6 +24,7 @@ def timed(name: str) -> Callable[[NodeFn], NodeFn]:
             out = await fn(state, runtime) or {}
             prev = (state.get("timings") or {}).get(name, 0.0)
             out["timings"] = {name: round(prev + time.perf_counter() - t0, 3)}
+            runtime.context.save_usage()  # budget counters survive a kill
             return out
 
         return wrapper

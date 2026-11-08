@@ -22,9 +22,20 @@ providers:
 # Used when a model id is not listed above (cost estimate only).
 fallback_price: { input_per_mtok: 2.00, output_per_mtok: 10.00 }
 
-# Google Places API (New) Text Search with website/phone/rating in the field mask bills as
-# the Enterprise SKU. Estimate only; check your Cloud console for the real number.
+# Google Places API (New) prices per 1,000 requests by SKU (checked 2026-11-08; estimate only,
+# the free monthly caps are not subtracted — check your Cloud console for the real number).
+# Text Search with website/phone/rating in the field mask bills as Enterprise; without them, Pro.
 places:
   env_key: GOOGLE_PLACES_API_KEY
-  usd_per_request: 0.035
-  free_requests_per_month: 1000
+  sku_usd_per_1000:
+    text_search_pro: 32.0
+    text_search_enterprise: 35.0
+    place_details_enterprise: 20.0
+  free_per_month:
+    text_search_pro: 5000
+    text_search_enterprise: 1000
+    place_details_enterprise: 1000
+
+search:
+  env_key: SERPER_API_KEY
+  usd_per_1000: 1.0

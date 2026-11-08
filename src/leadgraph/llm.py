@@ -11,7 +11,15 @@ from typing import Any, TypeVar
 
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    message_to_dict,
+    messages_from_dict,
+)
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel
 
 from leadgraph.cache import Cache
@@ -23,6 +31,16 @@ M = TypeVar("M", bound=BaseModel)
 
 class StructuredOutputError(RuntimeError):
     pass
+
+
+def message_key(m: BaseMessage) -> dict[str, Any]:
+    """Stable, provider-independent fingerprint of a message for cache keys."""
+    key: dict[str, Any] = {"type": m.type, "content": m.content}
+    if isinstance(m, AIMessage) and m.tool_calls:
+        key["tool_calls"] = [(c["name"], c["args"], c.get("id")) for c in m.tool_calls]
+    if getattr(m, "tool_call_id", None):
+        key["tool_call_id"] = m.tool_call_id
+    return key
 
 
 def get_model(provider: str, model: str, api_key: str, *, temperature: float | None = 0,
@@ -50,8 +68,44 @@ class LLM:
         self.method = method or (prov.structured_method if prov else "function_calling")
         self._sem = asyncio.Semaphore(concurrency)
 
+    def _record(self, raw: Any) -> tuple[int, int]:
+        meta = getattr(raw, "usage_metadata", None) or {}
+        in_tok = int(meta.get("input_tokens", 0) or 0)
+        out_tok = int(meta.get("output_tokens", 0) or 0)
+        self.usage.add_llm(self.model, in_tok, out_tok,
+                           self.price.input_per_mtok, self.price.output_per_mtok)
+        return in_tok, out_tok
+
     async def structured(self, schema: type[M], system: str, user: str) -> M:
         key = (self.provider, self.model, schema.__name__, schema.model_json_schema(), system, user)
+        return await self._structured(schema, [SystemMessage(system), HumanMessage(user)], key)
+
+    async def structured_messages(self, schema: type[M], messages: list[BaseMessage]) -> M:
+        key = (self.provider, self.model, schema.__name__, schema.model_json_schema(),
+               [message_key(m) for m in messages])
+        return await self._structured(schema, messages, key)
+
+    async def chat_turn(self, messages: list[BaseMessage], tools: list[Any]) -> AIMessage:
+        """One tool-calling turn (agent loops). Cached by the full conversation."""
+        tool_specs = [convert_to_openai_tool(t) for t in tools]
+        key = (self.provider, self.model, "chat_turn", tool_specs,
+               [message_key(m) for m in messages])
+        hit = self.cache.get("llm", *key)
+        if hit is not None:
+            return messages_from_dict([hit["message"]])[0]
+        self.usage.check_llm()
+        async with self._sem:
+            self.usage.check_llm()
+            try:
+                msg = await self.chat.bind_tools(tools).ainvoke(messages)
+            except Exception:
+                self.usage.llm_errors += 1
+                raise
+        self._record(msg)
+        self.cache.set("llm", *key, value={"message": message_to_dict(msg)})
+        return msg
+
+    async def _structured(self, schema: type[M], messages: list[BaseMessage], key: tuple) -> M:
         hit = self.cache.get("llm", *key)
         if hit is not None:
             return schema.model_validate(hit["parsed"])
@@ -61,17 +115,13 @@ class LLM:
         async with self._sem:
             self.usage.check_llm()
             try:
-                out = await runnable.ainvoke([SystemMessage(system), HumanMessage(user)])
+                out = await runnable.ainvoke(messages)
             except Exception:
                 self.usage.llm_errors += 1
                 raise
 
         raw = out.get("raw") if isinstance(out, dict) else None
-        meta = getattr(raw, "usage_metadata", None) or {}
-        in_tok = int(meta.get("input_tokens", 0) or 0)
-        out_tok = int(meta.get("output_tokens", 0) or 0)
-        self.usage.add_llm(self.model, in_tok, out_tok,
-                           self.price.input_per_mtok, self.price.output_per_mtok)
+        in_tok, out_tok = self._record(raw)
 
         parsed = out.get("parsed") if isinstance(out, dict) else out
         if parsed is None or (isinstance(out, dict) and out.get("parsing_error")):

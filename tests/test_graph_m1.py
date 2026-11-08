@@ -9,12 +9,21 @@ from openpyxl import load_workbook
 from leadgraph.cache import Cache
 from leadgraph.export import EXCLUDED_COLUMNS, LEAD_COLUMNS
 from leadgraph.graph.build import build_graph
-from leadgraph.graph.state import Deps, RunContext
+from leadgraph.graph.state import Deps, Mode, RunContext
 from leadgraph.llm import LLM
 from leadgraph.sources.places import PLACES_URL, PlacesClient
 from leadgraph.usage import Usage
 from leadgraph.web.fetch import Fetcher
-from tests.fakes import FakeChat, PlacesFake, classify_responder, html_page, make_place, mount_site
+from tests.fakes import (
+    DETAILS_ROUTE,
+    DetailsFake,
+    FakeChat,
+    PlacesFake,
+    classify_responder,
+    html_page,
+    make_place,
+    mount_site,
+)
 
 PM_HTML = html_page("HV", "<p>Ihre Hausverwaltung in Berlin: WEG-Verwaltung und Mietverwaltung.</p>")
 MAKLER_HTML = html_page("Makler", "<p>Makler für den Verkauf Ihrer Immobilie in Berlin.</p>")
@@ -40,12 +49,13 @@ def mount_web():
 
 async def run_once(tmp_path, city, segment, settings, models, run_id, chat):
     cache = Cache(tmp_path / ".cache")
-    usage = Usage(max_places_requests=10, max_llm_cost_usd=1.0, places_usd_per_request=0.035)
+    usage = Usage(max_places_requests=10, max_llm_cost_usd=1.0)
     async with httpx.AsyncClient() as http:
         fetcher = Fetcher(settings.fetch, cache, usage)
         ctx = RunContext(
             run_id=run_id, city=city, segment=segment, settings=settings, models=models,
             provider="anthropic", model="claude-haiku-5-5", area_name="mitte", limit=20,
+            mode=Mode(command="run", queries=[segment.queries[0]], max_rounds=1),
             outputs_dir=tmp_path,
             deps=Deps(cache=cache, usage=usage,
                       places=PlacesClient("k", http, cache, usage, settings.places),
@@ -64,6 +74,8 @@ async def run_once(tmp_path, city, segment, settings, models, run_id, chat):
 async def test_m1_end_to_end_and_cached_rerun(tmp_path, city, segment, settings, models):
     fake = PlacesFake(places_pages())
     respx.post(PLACES_URL).mock(side_effect=fake)
+    details = DetailsFake(places_pages()[0])
+    respx.get(url__regex=DETAILS_ROUTE).mock(side_effect=details)
     mount_web()
 
     chat = FakeChat(classify_responder)
@@ -73,15 +85,21 @@ async def test_m1_end_to_end_and_cached_rerun(tmp_path, city, segment, settings,
     c = report["counts"]
     assert c["places_results"] == 10
     assert c["filtered_out"] == 2  # closed + Potsdam
-    assert c["unique_companies"] == 7  # 8 kept, place 7 merges into place 1 by domain
+    assert c["unique_companies"] == 8  # before details: no website/phone keys yet
+    assert c["final_unique_companies"] == 7  # after details, place 7 merges into 1 by domain
     assert c["property_managers"] == 6 and c["not_property_managers"] == 1
     assert c["leads"] == 6 and c["excluded"] == 3
-    assert report["usage"]["places_requests"] == 1 and chat.calls == 7
+    # Pro tier: 1 search page + Place Details for the 8 Berlin records (7 companies after the
+    # domain merge, but places 1 and 7 only share a domain once details are known)
+    assert report["usage"]["places_by_sku"] == {"text_search_pro": 1,
+                                                "place_details_enterprise": 8}
+    assert sorted(details.calls) == sorted(f"place-{i}" for i in (1, 2, 3, 4, 5, 6, 7, 10))
+    assert chat.calls == 7
     assert report["usage"]["llm_cost_estimate_usd"] > 0
 
     # --- xlsx ----------------------------------------------------------------------
     wb = load_workbook(final["outputs"]["xlsx"])
-    assert wb.sheetnames == ["leads", "excluded"]
+    assert wb.sheetnames == ["leads", "excluded", "coverage", "sources"]
     leads = list(wb["leads"].iter_rows(values_only=True))
     assert list(leads[0]) == LEAD_COLUMNS
     for col in ("name", "address", "postcode", "website", "phone", "google_place_id",

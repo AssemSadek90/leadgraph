@@ -190,8 +190,8 @@ def _merge(group: list[Candidate]) -> Company:
     )
 
 
-def dedupe(candidates: list[Candidate]) -> list[Company]:
-    """Merge candidates that share any match key. Output keeps first-seen order."""
+def dedupe_groups(candidates: list[Candidate]) -> list[list[Candidate]]:
+    """Candidates grouped into companies (shared match key, transitive). First-seen order."""
     uf = _UnionFind(len(candidates))
     owner: dict[str, int] = {}
     for i, c in enumerate(candidates):
@@ -203,7 +203,16 @@ def dedupe(candidates: list[Candidate]) -> list[Company]:
     groups: dict[int, list[Candidate]] = {}
     for i, c in enumerate(candidates):
         groups.setdefault(uf.find(i), []).append(c)
-    companies = [_merge(g) for _, g in sorted(groups.items())]
+    return [g for _, g in sorted(groups.items())]
+
+
+def dedupe(candidates: list[Candidate]) -> list[Company]:
+    """Merge candidates that share any match key. Output keeps first-seen order."""
+    return merge_groups(dedupe_groups(candidates))
+
+
+def merge_groups(groups: list[list[Candidate]]) -> list[Company]:
+    companies = [_merge(g) for g in groups]
     # Two groups can still collide on id (same hashed name+postcode without keys); merge ids.
     seen: dict[str, Company] = {}
     for comp in companies:
@@ -214,3 +223,22 @@ def dedupe(candidates: list[Candidate]) -> list[Company]:
         else:
             seen[comp.id] = comp
     return list(seen.values())
+
+
+GENERIC_NAME_TOKENS = {
+    "hausverwaltung", "hausverwaltungen", "immobilienverwaltung", "immobilien", "verwaltung",
+    "verwaltungs", "verwaltungsgesellschaft", "weg", "miet", "mietverwaltung", "property",
+    "management", "berlin", "und", "der", "die", "das", "von", "fuer", "the", "co", "service",
+    "services", "gesellschaft", "real", "estate", "objektverwaltung", "grundstuecksverwaltung",
+}
+
+
+def name_similarity(a: str, b: str) -> float:
+    """0–1 similarity of two business names on their distinctive tokens."""
+    ta, tb = set(normalize_name(a).split()), set(normalize_name(b).split())
+    da, db = ta - GENERIC_NAME_TOKENS, tb - GENERIC_NAME_TOKENS
+    if not da or not db:
+        return 1.0 if ta == tb and ta else 0.0
+    if da <= db or db <= da:
+        return 1.0
+    return len(da & db) / len(da | db)

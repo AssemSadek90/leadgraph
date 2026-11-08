@@ -14,12 +14,29 @@ llm:
   homepage_chars: 2000           # text passed to classify
 
 budget:
-  max_places_requests: 300
+  max_places_requests: 300       # all Places calls (search pages, lookups, details)
   max_llm_cost_usd: 2.0
+  max_search_requests: 100       # Serper queries
+
+discovery:
+  max_rounds: 4
+  yield_threshold: 0.02          # stop after two consecutive rounds below this
+  min_tile_km: 1.0               # quadtree never creates tiles smaller than this
+  eager_split_km: 6.0            # tiles larger than this split after one full page (saves 2 requests)
+  max_list_pages: 10             # pagination limit per approved list source
+  list_chunk_chars: 20000
+  max_chunks_per_page: 5
+  max_expansion_queries: 5
+
+agents:
+  scout_max_tool_calls: 15
+  tool_result_chars: 4000
 
 places:
+  tier: pro                      # pro: cheap sweep + Place Details for Berlin companies; enterprise: plan's mask
   page_size: 20
   max_pages: 3                   # Text Search returns at most 60 results across pages
   language_code: de
   region_code: DE
   concurrency: 4
+  lookup_page_size: 5            # name lookups for list entries

@@ -51,7 +51,8 @@ def cache(tmp_path):
 
 @pytest.fixture
 def usage():
-    return Usage(max_places_requests=50, max_llm_cost_usd=1.0, places_usd_per_request=0.035)
+    return Usage(max_places_requests=50, max_llm_cost_usd=1.0,
+                 places_sku_usd_per_1000=load_models().places.sku_usd_per_1000)
 
 
 def load_json(name: str):

@@ -103,10 +103,10 @@ async def classify(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
     companies = [Company(**c) for c in state.get("companies", [])]
     done = await asyncio.gather(*(classify_company(c, ctx) for c in companies))
 
-    kept, excluded = [], []
+    kept, rejected = [], []
     for c in done:
         if c.is_property_manager is False:
-            excluded.append(ExcludedRecord(
+            rejected.append(ExcludedRecord(
                 name=c.name, address=c.address, postcode=c.postcode, website=c.website,
                 google_place_id=c.google_place_id, source=", ".join(c.discovery_sources),
                 reason=f"not_property_manager:{c.classification_category} — "
@@ -115,7 +115,7 @@ async def classify(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
         kept.append(c.model_dump(mode="json"))
     return {
         "companies": kept,
-        "excluded": excluded,
+        "rejected": rejected,
         "counts": {
             "classified": sum(c.classification_category is not None for c in done),
             "property_managers": sum(c.is_property_manager is True for c in done),

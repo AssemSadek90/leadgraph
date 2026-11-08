@@ -34,8 +34,17 @@ def make_place(i: int, **over: Any) -> dict[str, Any]:
     return place
 
 
+def apply_mask(place: dict[str, Any], mask: str, prefix: str = "places.") -> dict[str, Any]:
+    """Return only the fields the field mask asks for (like the real API)."""
+    fields = {f.removeprefix(prefix) for f in mask.split(",")}
+    return {k: v for k, v in place.items() if k in fields}
+
+
 class PlacesFake:
-    """respx side effect: serves `pages` (list of place lists) via nextPageToken."""
+    """respx side effect: serves `pages` (list of place lists) via nextPageToken.
+
+    Responses honour the X-Goog-FieldMask header, so Pro-tier requests get no website/phone.
+    """
 
     def __init__(self, pages: list[list[dict[str, Any]]]):
         self.pages = pages
@@ -47,10 +56,30 @@ class PlacesFake:
         self.requests.append(body)
         self.headers.append(request.headers)
         idx = int(body.get("pageToken", "page-0").split("-")[1])
-        data: dict[str, Any] = {"places": self.pages[idx]}
+        mask = request.headers["X-Goog-FieldMask"]
+        data: dict[str, Any] = {"places": [apply_mask(p, mask) for p in self.pages[idx]]}
         if idx + 1 < len(self.pages):
             data["nextPageToken"] = f"page-{idx + 1}"
         return httpx.Response(200, json=data)
+
+
+class DetailsFake:
+    """respx side effect for GET /v1/places/{id}: Enterprise fields of known places."""
+
+    def __init__(self, places: list[dict[str, Any]]):
+        self.by_id = {p["id"]: p for p in places}
+        self.calls: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        pid = request.url.path.rsplit("/", 1)[-1]
+        self.calls.append(pid)
+        if pid not in self.by_id:
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+        return httpx.Response(200, json=apply_mask(self.by_id[pid],
+                                                   request.headers["X-Goog-FieldMask"], ""))
+
+
+DETAILS_ROUTE = r"https://places\.googleapis\.com/v1/places/[^/:]+$"
 
 
 def html_page(title: str, body: str) -> str:
@@ -97,3 +126,32 @@ def classify_responder(schema, messages) -> dict[str, Any]:
         return {"category": "hausverwaltung", "confidence": "high",
                 "reason": "Homepage mentions WEG-Verwaltung."}
     return {"category": "other", "confidence": "low", "reason": "No evidence."}
+
+
+class ScriptedChat(FakeChat):
+    """FakeChat that also supports bind_tools: `tool_script(messages) -> AIMessage`."""
+
+    def __init__(self, responder, tool_script, **kw):
+        super().__init__(responder, **kw)
+        self.tool_script = tool_script
+        self.tool_turns = 0
+
+    def bind_tools(self, tools, **_):
+        outer = self
+
+        class _Runnable:
+            async def ainvoke(self, messages):
+                outer.calls += 1
+                outer.tool_turns += 1
+                msg = outer.tool_script(messages)
+                msg.usage_metadata = {"input_tokens": outer.input_tokens,
+                                      "output_tokens": outer.output_tokens,
+                                      "total_tokens": outer.input_tokens + outer.output_tokens}
+                return msg
+
+        return _Runnable()
+
+
+def tool_call(name: str, args: dict[str, Any], call_id: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id,
+                                              "type": "tool_call"}])

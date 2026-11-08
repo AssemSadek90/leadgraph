@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel
@@ -76,14 +76,20 @@ class ProviderConfig(BaseModel):
 
 class PlacesPricing(BaseModel):
     env_key: str = "GOOGLE_PLACES_API_KEY"
-    usd_per_request: float = 0.035
-    free_requests_per_month: int = 0
+    sku_usd_per_1000: dict[str, float] = {}
+    free_per_month: dict[str, int] = {}
+
+
+class SearchPricing(BaseModel):
+    env_key: str = "SERPER_API_KEY"
+    usd_per_1000: float = 1.0
 
 
 class ModelsConfig(BaseModel):
     providers: dict[str, ProviderConfig]
     fallback_price: ModelPrice
     places: PlacesPricing = PlacesPricing()
+    search: SearchPricing = SearchPricing()
 
     def price(self, provider: str, model: str) -> ModelPrice:
         prov = self.providers.get(provider)
@@ -111,14 +117,33 @@ class LLMSettings(BaseModel):
 class BudgetSettings(BaseModel):
     max_places_requests: int = 300
     max_llm_cost_usd: float = 2.0
+    max_search_requests: int = 100
 
 
 class PlacesSettings(BaseModel):
+    tier: Literal["pro", "enterprise"] = "pro"
     page_size: int = 20
     max_pages: int = 3
     language_code: str = "de"
     region_code: str = "DE"
     concurrency: int = 4
+    lookup_page_size: int = 5
+
+
+class DiscoverySettings(BaseModel):
+    max_rounds: int = 4
+    yield_threshold: float = 0.02
+    min_tile_km: float = 1.0
+    eager_split_km: float = 6.0
+    max_list_pages: int = 10
+    list_chunk_chars: int = 20000
+    max_chunks_per_page: int = 5
+    max_expansion_queries: int = 5
+
+
+class AgentSettings(BaseModel):
+    scout_max_tool_calls: int = 15
+    tool_result_chars: int = 4000
 
 
 class Settings(BaseModel):
@@ -126,6 +151,8 @@ class Settings(BaseModel):
     llm: LLMSettings = LLMSettings()
     budget: BudgetSettings = BudgetSettings()
     places: PlacesSettings = PlacesSettings()
+    discovery: DiscoverySettings = DiscoverySettings()
+    agents: AgentSettings = AgentSettings()
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
