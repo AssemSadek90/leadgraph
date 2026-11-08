@@ -60,7 +60,8 @@ def user_prompt(company: Company, homepage: str | None, note: str | None) -> str
     return "\n".join(lines)
 
 
-async def classify_company(company: Company, ctx: RunContext) -> Company:
+async def classify_company(company: Company, ctx: RunContext,
+                           meter: dict[str, float] | None = None) -> Company:
     fetcher, llm = ctx.deps.fetcher, ctx.deps.llm
     homepage, note = None, None
     if company.website:
@@ -77,7 +78,7 @@ async def classify_company(company: Company, ctx: RunContext) -> Company:
     schema = classification_schema(ctx.segment)
     try:
         out = await llm.structured(schema, system_prompt(ctx.segment, ctx.city),
-                                   user_prompt(company, homepage, note))
+                                   user_prompt(company, homepage, note), meter=meter)
     except BudgetExceeded:
         company.needs_review = True
         company.review_reasons.append("classify_skipped:budget")

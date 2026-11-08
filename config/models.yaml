@@ -39,3 +39,9 @@ places:
 search:
   env_key: SERPER_API_KEY
   usd_per_1000: 1.0
+
+# Models compared by `leadgraph eval` (M7). provider:model
+eval_models:
+  - anthropic:claude-haiku-5-5
+  - anthropic:claude-sonnet-5-5
+  - openai:gpt-6-luna

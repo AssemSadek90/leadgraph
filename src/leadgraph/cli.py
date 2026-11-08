@@ -308,6 +308,41 @@ def accuracy_cmd(
     console.print(f"[green]saved:[/green] {run_path / 'validation.json'}")
 
 
+@app.command("eval")
+def eval_cmd(
+    run_id: Annotated[str, typer.Argument(help="Run whose companies the gold set came from.")],
+    gold: Annotated[Path, typer.Option(help="Labelled gold file.")] = Path("eval/gold.csv"),
+    models: Annotated[str | None, typer.Option(
+        help="Comma-separated provider:model list (default: eval_models in models.yaml).")] = None,
+    max_llm_cost: Annotated[float, typer.Option(help="Budget per model (USD).")] = 3.0,
+) -> None:
+    """M7: compare models on the gold set → eval/results.md + eval/results.png."""
+    from leadgraph.config import load_models
+    from leadgraph.evaluation import ModelSpec, run_eval, tracing_status
+
+    specs = [ModelSpec.parse(s.strip()) for s in
+             (models.split(",") if models else load_models().eval_models)]
+    console.print(f"Models: {', '.join(s.label for s in specs)} · tracing {tracing_status()}")
+    try:
+        out = asyncio.run(run_eval(run_id, gold, specs, max_llm_cost=max_llm_cost))
+    except MissingKey as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
+    t = Table(title=f"Evaluation on {out['meta']['rows']} labelled leads")
+    for col in ("model", "class.", "units", "contact", "evidence", "$/lead", "s/lead", "tools"):
+        t.add_column(col)
+
+    def pct(m: dict) -> str:
+        return "—" if m["accuracy"] is None else f"{m['accuracy']:.0%}"
+
+    for s in out["summaries"]:
+        t.add_row(s["model"], pct(s["classification"]), pct(s["units_managed"]),
+                  pct(s["contact"]), pct(s["evidence_valid"]), f"{s['cost_per_lead_usd']:.4f}",
+                  f"{s['latency_per_lead_s']:.1f}", str(s["avg_tool_calls"]))
+    console.print(t)
+    console.print("[green]wrote[/green] eval/results.md, eval/results.png, " + out["detail"])
+
+
 def main() -> None:  # pragma: no cover
     app()
 

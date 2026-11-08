@@ -91,6 +91,7 @@ class ModelsConfig(BaseModel):
     fallback_price: ModelPrice
     places: PlacesPricing = PlacesPricing()
     search: SearchPricing = SearchPricing()
+    eval_models: list[str] = []
 
     def price(self, provider: str, model: str) -> ModelPrice:
         prov = self.providers.get(provider)

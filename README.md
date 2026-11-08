@@ -15,6 +15,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M3 | Research agent (own domain only, ≤ 6 tool calls) → KPIs with evidence → verify_evidence; Send fan-out; `enrich` | built, offline tests pass |
 | M4 | Contacts (+ LinkedIn via search), scoring v1, validation (liveness, MX, domain match), review queue, all sheets | built, offline tests pass |
 | M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | built; needs the live run |
+| M7 | Evaluation harness (model comparison on the gold set) + optional Langfuse tracing | built, offline tests pass; needs gold labels |
 
 ## Setup (Windows, PowerShell)
 
@@ -56,6 +57,11 @@ uv run leadgraph recall <run_id>                  # recall probes from eval/reca
 # M5 validation sample (10 per tier) → label by hand in Excel → accuracy
 uv run leadgraph sample <enrich_run_id>           # writes eval/gold.csv (gitignored)
 uv run leadgraph accuracy <enrich_run_id>         # per-field accuracy, recall, Chapman
+
+# M7 model comparison on the labelled gold set (needs: uv sync --extra eval)
+uv run leadgraph eval <enrich_run_id>             # → eval/results.md + eval/results.png
+uv run leadgraph eval <enrich_run_id> --models anthropic:claude-haiku-5-5,openai:gpt-6-luna
+# tracing: setx LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (+ LANGFUSE_HOST) → one trace per company
 ```
 
 Useful flags: `--approve all|none|1,3` (non-interactive approval), `--source URL` (add a list

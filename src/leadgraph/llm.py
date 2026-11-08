@@ -22,6 +22,7 @@ from langchain_core.messages import (
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel
 
+from leadgraph import tracing
 from leadgraph.cache import Cache
 from leadgraph.config import ModelsConfig
 from leadgraph.usage import Usage
@@ -112,7 +113,8 @@ class LLM:
         async with self._sem:
             self.usage.check_llm()
             try:
-                msg = await self.chat.bind_tools(tools).ainvoke(messages)
+                msg = await self.chat.bind_tools(tools).ainvoke(
+                    messages, config={"callbacks": tracing.callbacks()})
             except Exception:
                 self.usage.llm_errors += 1
                 raise
@@ -132,7 +134,7 @@ class LLM:
         async with self._sem:
             self.usage.check_llm()
             try:
-                out = await runnable.ainvoke(messages)
+                out = await runnable.ainvoke(messages, config={"callbacks": tracing.callbacks()})
             except Exception:
                 self.usage.llm_errors += 1
                 raise

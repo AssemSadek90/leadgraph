@@ -4,6 +4,7 @@ Truth columns to fill by hand:
   true_is_property_manager  y / n
   true_units_managed        a number, or n/a if the website does not state it
   true_contact_ok           y / n (leave blank when no contact was predicted)
+  true_contact_name         optional: the right decision maker's name if the prediction is wrong
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ GOLD_COLUMNS = [
     "id", "name", "website", "tier", "fit_score", "pred_is_property_manager", "pred_category",
     "pred_units_managed", "units_source_url", "units_evidence", "pred_contact_name",
     "pred_contact_role", "pred_contact_email", "contact_source_url",
-    "true_is_property_manager", "true_units_managed", "true_contact_ok", "notes",
+    "true_is_property_manager", "true_units_managed", "true_contact_ok", "true_contact_name",
+    "notes",
 ]
 UNITS_TOLERANCE = 0.15
 
@@ -48,7 +50,7 @@ def gold_row(c: dict[str, Any]) -> dict[str, Any]:
         "pred_contact_name": contact.get("name"), "pred_contact_role": contact.get("role"),
         "pred_contact_email": contact.get("email"), "contact_source_url": contact.get("source_url"),
         "true_is_property_manager": "", "true_units_managed": "", "true_contact_ok": "",
-        "notes": "",
+        "true_contact_name": "", "notes": "",
     }
 
 

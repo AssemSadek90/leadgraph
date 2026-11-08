@@ -18,6 +18,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Send
 from pydantic import BaseModel, Field, create_model
 
+from leadgraph import tracing
 from leadgraph.agent import Tool, run_tool_loop
 from leadgraph.dedupe import normalize_domain
 from leadgraph.evidence import KPI_FIELDS, non_null_count, verify_kpis
@@ -220,7 +221,9 @@ def route_research(state: RunState, runtime: Runtime[RunContext]) -> list[Send] 
 
 async def research_agent(task: ResearchTask, runtime: Runtime[RunContext]) -> dict[str, Any]:
     company = Company(**task["company"])
-    return {"researched": [await research_company(company, runtime.context)]}
+    with tracing.company_trace(company.name, company_id=company.id, step="research"):
+        result = await research_company(company, runtime.context)
+    return {"researched": [result]}
 
 
 # --- verify_evidence ----------------------------------------------------------------------

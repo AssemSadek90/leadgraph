@@ -26,3 +26,6 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D20 | M4 | A personal email published on the site but on another domain (e.g. gmail) still counts for `reachable_decision_maker`, and is flagged `email_domain_mismatch` | It is published, so it is usable; the flag puts it in the review queue |
 | D21 | M4 | MX check accepts an A record as implicit MX; a DNS timeout is "unknown", not a failure; a robots-disallowed homepage counts as alive | Avoids false review flags |
 | D22 | M4 | Sheets: leads (PMs, tier then score), review, excluded, coverage, sources, kpi_definitions, plus evidence and contacts | Plan's six sheets, plus long-format audit sheets |
+| D23 | M7 | Eval models come from `eval_models` in models.yaml (default: Haiku 5.5, Sonnet 5.5, gpt-6-luna), not every listed model | Comparing Opus-class models on every lead is costly with little interview value |
+| D24 | M7 | Contact accuracy in eval: `true_contact_name` if labelled, else agreement with the original contact marked correct/incorrect | The gold set labels one run's contact; this extends it to other models without relabelling |
+| D25 | M7 | Langfuse and matplotlib are an optional `eval` extra; tracing is a no-op without keys | The core pipeline stays lean; traces are opt-in |

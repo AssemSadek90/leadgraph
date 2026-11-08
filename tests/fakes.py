@@ -107,7 +107,7 @@ class FakeChat:
         outer = self
 
         class _Runnable:
-            async def ainvoke(self, messages):
+            async def ainvoke(self, messages, config=None):
                 outer.calls += 1
                 parsed = schema.model_validate(outer.responder(schema, messages))
                 raw = AIMessage(content="", usage_metadata={
@@ -140,7 +140,7 @@ class ScriptedChat(FakeChat):
         outer = self
 
         class _Runnable:
-            async def ainvoke(self, messages):
+            async def ainvoke(self, messages, config=None):
                 outer.calls += 1
                 outer.tool_turns += 1
                 msg = outer.tool_script(messages)

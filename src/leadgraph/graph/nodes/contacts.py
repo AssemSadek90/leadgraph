@@ -87,8 +87,9 @@ async def find_linkedin(contact: Contact, company: Company, ctx: RunContext) -> 
     return None
 
 
-async def contacts_for(company: Company, ctx: RunContext,
-                       researched: dict[str, Any] | None) -> tuple[list[Contact], dict[str, Any]]:
+async def contacts_for(company: Company, ctx: RunContext, researched: dict[str, Any] | None,
+                       meter: dict[str, float] | None = None
+                       ) -> tuple[list[Contact], dict[str, Any]]:
     cs = ctx.settings.contacts
     fetcher = ctx.deps.fetcher
     domain = normalize_domain(company.website) or ""
@@ -115,7 +116,8 @@ async def contacts_for(company: Company, ctx: RunContext,
     body = "\n\n".join(f"PAGE: {u}\n{t[: cs.page_chars]}" for u, t in texts.items())
     try:
         out = await ctx.deps.llm.structured(
-            ContactsOut, CONTACTS_SYSTEM.format(name=company.name, domain=domain), body)
+            ContactsOut, CONTACTS_SYSTEM.format(name=company.name, domain=domain), body,
+            meter=meter)
     except BudgetExceeded as exc:
         stats["error"] = f"budget: {exc}"
         return [], stats
