@@ -55,8 +55,23 @@ def empty_kpis():
             for n in names}
 
 
+def contacts_answer(base: str):
+    return {"people": [
+        {"name": "Max Mustermann", "role": "Geschäftsführer", "role_category": "geschaeftsfuehrer",
+         "email": "m.mustermann@muster-hv.de", "source_url": f"{base}/team.html"},
+        {"name": "Erika Beispiel", "role": "Leitung WEG-Verwaltung", "role_category": "leitung_weg",
+         "email": "weg@muster-hv.de", "source_url": f"{base}/team.html"},
+        {"name": "Erfundene Person", "role": "Prokurist", "role_category": "prokurist",
+         "email": "e.person@muster-hv.de", "source_url": f"{base}/team.html"},  # not on page
+        {"name": "Max Mustermann", "role": "GF", "role_category": "geschaeftsfuehrer",
+         "email": "max@mustermann-privat.de", "source_url": f"{base}/impressum.html"},  # dup
+    ]}
+
+
 def kpi_responder(base: str, tampered: bool = False):
     def respond(schema, messages):
+        if schema.__name__ == "ContactsOut":
+            return contacts_answer(base)
         k = empty_kpis()
         k["units_managed"] = {"value": 5000 if tampered else 1200, "source_url": f"{base}/",
                               "evidence": "über 5.000 Wohneinheiten" if tampered
@@ -89,11 +104,15 @@ def make_ctx(tmp_path, settings, models, segment, city, chat, limit=None):
     fetcher = Fetcher(settings.fetch, cache, usage)
     llm = LLM(chat, provider="anthropic", model="claude-haiku-5-5", cache=cache, usage=usage,
               models_cfg=models)
+    async def fake_dns(name, rtype):
+        return ["10 mx.example."]
+
     return RunContext(run_id="enr-test", city=city, segment=segment, settings=settings,
                       models=models, provider="anthropic", model="claude-haiku-5-5",
                       mode=Mode(command="enrich", research=True), limit=limit,
                       outputs_dir=tmp_path,
-                      deps=Deps(cache=cache, usage=usage, places=None, fetcher=fetcher, llm=llm))
+                      deps=Deps(cache=cache, usage=usage, places=None, fetcher=fetcher, llm=llm,
+                                resolver=fake_dns))
 
 
 def company(cid: str, website: str, pm: bool = True) -> dict:
@@ -133,13 +152,30 @@ async def test_research_agent_on_fixture_site(tmp_path, settings, models, segmen
     # no field anywhere has a value without evidence
     for item in k.values():
         assert item["value"] in (None, []) or (item["evidence"] and item["source_url"])
-    assert c["data_completeness"] == 0.3 and not c["needs_review"]
+    assert c["data_completeness"] == 0.3
+    # validate: the fixture is served from 127.0.0.1, so @muster-hv.de emails are flagged
+    assert c["needs_review"] and c["review_reasons"] == [
+        "email_domain_mismatch:m.mustermann@muster-hv.de", "email_domain_mismatch:weg@muster-hv.de"]
 
     # domain guard: the off-domain fetch was refused in code and never reached the server
     trace = final["researched"][0]["trace"]
     assert [t["status"] for t in trace["tool_calls"]] == ["ok", "ok", "ok", "error"]
     assert "/evil" not in srv.paths
-    assert set(srv.paths) <= {"/robots.txt", "/", "/leistungen.html", "/impressum.html"}
+    # contacts fetched the team page (own domain) because research had skipped it
+    assert set(srv.paths) <= {"/robots.txt", "/", "/leistungen.html", "/impressum.html",
+                              "/team.html"}
+
+    # contacts: names must be on the page, emails must be published on the site
+    people = {p["name"]: p for p in c["contacts"]}
+    assert list(people) == ["Max Mustermann", "Erika Beispiel"]
+    assert people["Max Mustermann"]["email"] == "m.mustermann@muster-hv.de"
+    assert people["Max Mustermann"]["email_type"] == "personal"
+    assert people["Erika Beispiel"]["email_type"] == "role"
+    assert all(p["linkedin_verified"] is False for p in c["contacts"])
+
+    # score: 1,200 units (24) + residential (20) + no digital (4.5) + personal email (15)
+    #        + unknown scope (7) + unknown association (4) = 74.5 → A
+    assert c["fit_score"] == 74.5 and c["tier"] == "A"
 
     # report numbers: tool calls ≤ 6, cost per company recorded
     stats = final["research_stats"]

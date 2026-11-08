@@ -13,6 +13,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M1 | Thin slice: Places search → dedupe → classify → xlsx + report.json | built, offline tests pass |
 | M2 | Discovery loop: quadtree sweep, scout agent + approval, list extraction, rounds, Chapman, checkpoints | built, offline tests pass |
 | M3 | Research agent (own domain only, ≤ 6 tool calls) → KPIs with evidence → verify_evidence; Send fan-out; `enrich` | built, offline tests pass |
+| M4 | Contacts (+ LinkedIn via search), scoring v1, validation (liveness, MX, domain match), review queue, all sheets | built, offline tests pass |
 
 ## Setup (Windows, PowerShell)
 

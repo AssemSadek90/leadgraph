@@ -214,7 +214,8 @@ async def test_discovery_loop_with_approval_crash_and_resume(tmp_path, models):
     # classification + export
     assert report["counts"]["leads"] == 14 and report["counts"]["not_property_managers"] == 1
     wb = load_workbook(final["outputs"]["xlsx"])
-    assert wb.sheetnames == ["leads", "excluded", "coverage", "sources", "evidence"]
+    assert wb.sheetnames == ["leads", "review", "excluded", "coverage", "sources",
+                             "kpi_definitions", "evidence", "contacts"]
     src_rows = list(wb["sources"].iter_rows(values_only=True))
     assert len(src_rows) == 3  # header + DIR1 (approved) + DIR2 (not approved)
     approved_by = {r[0]: r[4] for r in src_rows[1:]}

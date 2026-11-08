@@ -43,3 +43,8 @@ places:
   region_code: DE
   concurrency: 4
   lookup_page_size: 5            # name lookups for list entries
+
+contacts:
+  extra_pages: 3                 # Impressum/Team/Kontakt pages fetched if research skipped them
+  page_chars: 6000
+  linkedin_top_contacts: 1       # Serper queries per company (name + company, site:linkedin.com/in)

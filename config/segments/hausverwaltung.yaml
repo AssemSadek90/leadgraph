@@ -48,3 +48,85 @@ buckets:
   berlin_focus: { berlin: 1.0, regional: 1.0, national: 0.5, unknown: 0.7 }
   association_member: { member: 1.0, unknown: 0.4 }
 tiers: { A: 70, B: 45 }
+
+# Column dictionary for the kpi_definitions sheet (BUILD_PLAN Section 3.2).
+kpi_definitions:
+  - column: tier
+    definition: A (fit_score ≥ 70), B (≥ 45), C (below 45).
+    why: Prioritises outreach.
+    source: score
+  - column: fit_score
+    definition: Weighted score 0–100; points per component in score_breakdown. Unknown values get partial credit.
+    why: Explainable ranking; missing data does not masquerade as a bad fit.
+    source: score
+  - column: data_completeness
+    definition: Share of the 10 KPIs with a verified value.
+    why: Read next to the score; a high score with low completeness needs a look.
+    source: verify_evidence
+  - column: units_managed
+    definition: Number of units (Einheiten / Wohneinheiten) the company manages.
+    why: Size of the potential contract.
+    source: Homepage / about page ("über 2.000 Einheiten")
+    weight: 30
+  - column: management_types
+    definition: WEG, MIET (rental), SEV (Sondereigentum), GEWERBE (commercial).
+    why: WEG and rental management both need heating cost billing; WEG decisions need an owners' resolution (longer sales cycle).
+    source: Services page
+  - column: residential_focus
+    definition: True if mainly residential buildings.
+    why: The Heizkostenverordnung applies to multi-unit buildings with shared heating; commercial-only is a weaker fit.
+    source: Services page
+    weight: 20
+  - column: portfolio_scope
+    definition: berlin, regional (Berlin + surrounding region) or national.
+    why: Berlin-focused managers fit a Berlin-first sales motion.
+    source: About page
+    weight: 10
+  - column: tenant_portal_or_app
+    definition: Offers an online portal or app for tenants / owners.
+    why: Digital maturity — easier integration, more likely to value real-time data.
+    source: Website
+    weight: "15 (digital_maturity, with software_mentioned)"
+  - column: software_mentioned
+    definition: Property-management software named on the site.
+    why: Digital maturity — easier integration, more likely to value real-time data.
+    source: Website
+    weight: "15 (digital_maturity, with tenant_portal_or_app)"
+  - column: metering_provider_mentioned
+    definition: Heating-cost metering providers named (ista, Techem, Brunata-Metrona, Minol, KALO, …).
+    why: Shows the incumbent — a displacement target. Informational, not scored (direction is ambiguous).
+    source: FAQ / partner pages
+  - column: remote_reading_or_uvi_mentioned
+    definition: Mentions remote meter reading or monthly consumption information (UVI).
+    why: Non-remote-readable meters must be retrofitted by 31.12.2026; monthly consumption information becomes a general obligation from January 2027. Informational, not scored (already equipped vs. needs a retrofit).
+    source: News / FAQ pages
+  - column: association_membership
+    definition: Industry associations (VDIV, IVD, BVI, …).
+    why: Established, professional operator; VDIV members often show the VDIV logo.
+    source: Footer / about page
+    weight: 10
+  - column: employee_count
+    definition: Number of employees, if stated.
+    why: Size proxy when units are not stated.
+    source: Team page
+  - column: google_review_count
+    definition: Number of Google reviews (Places API).
+    why: Weak proxy for size and activity.
+    source: Places API
+  - column: top_contact_*
+    definition: Highest-ranked person (Geschäftsführer > Inhaber > Prokurist > Leitung WEG/Miet > Technik) with role and email.
+    why: Reachable decision maker.
+    source: Impressum / Team / Kontakt pages
+    weight: "15 (reachable_decision_maker: personal email 1.0, named person 0.6)"
+  - column: email_type
+    definition: personal (name-based), role (weg@, verwaltung@), generic (info@, kontakt@). Emails only if published on the company's own site.
+    why: Personal emails reach the decision maker; never guessed (GDPR).
+    source: Company website
+  - column: linkedin_url
+    definition: Profile URL from a search result whose title names the person. linkedin.com is never fetched; linkedin_verified stays false until a human checks.
+    why: Second channel to the decision maker.
+    source: Web search (site:linkedin.com/in)
+  - column: needs_review / review_reasons
+    definition: Set when evidence was missing, an email domain differs from the website, the site is unreachable, or classification confidence was low.
+    why: Review queue before outreach.
+    source: verify_evidence, validate

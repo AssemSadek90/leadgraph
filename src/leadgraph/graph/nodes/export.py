@@ -9,7 +9,7 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
-from leadgraph.export import leads_and_excluded, write_report, write_xlsx
+from leadgraph.export import leads_and_excluded, review_rows, write_report, write_xlsx
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
 
@@ -67,7 +67,8 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
             "city": ctx.city.name, "area": ctx.area_name, "segment": ctx.segment.name,
             "provider": ctx.provider, "model": ctx.model, "limit": ctx.limit,
         },
-        "counts": {**(state.get("counts") or {}), "leads": len(leads), "excluded": len(excluded)},
+        "counts": {**(state.get("counts") or {}), "leads": len(leads), "excluded": len(excluded),
+                   "review": len(review_rows(state.get("companies", [])))},
         "timings_s": state.get("timings") or {},
         "cache": ctx.deps.cache.stats(),
         "usage": usage,
@@ -87,6 +88,9 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
             "max_depth": max((t["depth"] for t in state.get("tiles") or []), default=None),
         },
         "research": state.get("research_stats") or {},
+        "contacts": state.get("contact_stats") or {},
+        "scoring": state.get("score_stats") or {},
+        "validation": state.get("validation_stats") or {},
         "coverage": state.get("coverage") or {},
         "saturation": state.get("saturation") or [],
         "sources": {
@@ -104,7 +108,8 @@ async def export(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any
     out_dir = ctx.outputs_dir / ctx.run_id
     xlsx, report_path = out_dir / "leads.xlsx", out_dir / "report.json"
     write_xlsx(xlsx, state.get("companies", []), excluded_rows(state),
-               coverage=coverage_sheet_data(state), sources=sources_sheet_rows(state))
+               coverage=coverage_sheet_data(state), sources=sources_sheet_rows(state),
+               kpi_definitions=ctx.segment.kpi_definitions)
     write_report(report_path, build_report(state, ctx))
     with (out_dir / "companies.jsonl").open("w", encoding="utf-8") as f:  # all discovered
         for c in state.get("companies", []):

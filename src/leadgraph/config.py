@@ -59,6 +59,7 @@ class SegmentConfig(BaseModel):
     weights: dict[str, float] = {}
     buckets: dict[str, dict[str, float]] = {}
     tiers: dict[str, float] = {}
+    kpi_definitions: list[dict[str, Any]] = []
 
 
 class ModelPrice(BaseModel):
@@ -149,6 +150,12 @@ class AgentSettings(BaseModel):
     research_concurrency: int = 6
 
 
+class ContactSettings(BaseModel):
+    extra_pages: int = 3  # contact-like pages fetched if the research agent skipped them
+    page_chars: int = 6000
+    linkedin_top_contacts: int = 1
+
+
 class Settings(BaseModel):
     fetch: FetchSettings
     llm: LLMSettings = LLMSettings()
@@ -156,6 +163,7 @@ class Settings(BaseModel):
     places: PlacesSettings = PlacesSettings()
     discovery: DiscoverySettings = DiscoverySettings()
     agents: AgentSettings = AgentSettings()
+    contacts: ContactSettings = ContactSettings()
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

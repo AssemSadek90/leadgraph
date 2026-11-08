@@ -1,0 +1,56 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	plan_sweep(plan_sweep)
+	scout_sources(scout_sources)
+	approve_sources(approve_sources)
+	places_sweep(places_sweep)
+	extract_lists(extract_lists)
+	merge_dedupe(merge_dedupe)
+	measure_yield(measure_yield)
+	expand_queries(expand_queries)
+	place_details(place_details)
+	classify(classify)
+	prepare_enrich(prepare_enrich)
+	research_agent(research_agent)
+	verify_evidence(verify_evidence)
+	contacts(contacts)
+	score(score)
+	validate(validate)
+	export(export)
+	__end__([<p>__end__</p>]):::last
+	__start__ -.-> plan_sweep;
+	__start__ -.-> prepare_enrich;
+	approve_sources --> extract_lists;
+	approve_sources --> places_sweep;
+	classify -.-> export;
+	classify -.-> research_agent;
+	classify -.-> verify_evidence;
+	contacts --> score;
+	expand_queries -.-> place_details;
+	expand_queries -.-> plan_sweep;
+	extract_lists --> merge_dedupe;
+	measure_yield -.-> expand_queries;
+	measure_yield -.-> place_details;
+	merge_dedupe --> measure_yield;
+	place_details --> classify;
+	places_sweep --> merge_dedupe;
+	plan_sweep -.-> extract_lists;
+	plan_sweep -.-> places_sweep;
+	plan_sweep -.-> scout_sources;
+	prepare_enrich -.-> export;
+	prepare_enrich -.-> research_agent;
+	prepare_enrich -.-> verify_evidence;
+	research_agent --> verify_evidence;
+	score --> validate;
+	scout_sources --> approve_sources;
+	validate --> export;
+	verify_evidence --> contacts;
+	export --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

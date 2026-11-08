@@ -21,3 +21,8 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D15 | M3 | verify_evidence also checks values against their quote: numbers must appear in the evidence, list items must be named in it | Catches a real quote paired with a wrong value |
 | D16 | M3 | KPI values are columns in `leads`; quotes and URLs go to an `evidence` sheet (one row per value) | Keeps `leads` readable while every value stays auditable |
 | D17 | M3 | `leadgraph enrich <discover_run>` starts from the discovery run's final checkpoint state; `run` includes research | Monday's overnight enrichment needs Sunday's discovery as input; discovery stats carry over into the final sheet |
+| D18 | M4 | contacts reads pages the research agent cached and fetches up to 3 more Impressum/Team/Kontakt pages from the homepage links (own domain) | The Impressum is the legally required contact page; the agent may have spent its calls elsewhere |
+| D19 | M4 | One LinkedIn search per company (top contact by role); URL kept only for a `/in/` result whose title names first and last name | Cost control (cut line allows dropping LinkedIn entirely); P3 |
+| D20 | M4 | A personal email published on the site but on another domain (e.g. gmail) still counts for `reachable_decision_maker`, and is flagged `email_domain_mismatch` | It is published, so it is usable; the flag puts it in the review queue |
+| D21 | M4 | MX check accepts an A record as implicit MX; a DNS timeout is "unknown", not a failure; a robots-disallowed homepage counts as alive | Avoids false review flags |
+| D22 | M4 | Sheets: leads (PMs, tier then score), review, excluded, coverage, sources, kpi_definitions, plus evidence and contacts | Plan's six sheets, plus long-format audit sheets |

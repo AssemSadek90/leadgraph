@@ -99,7 +99,8 @@ async def test_m1_end_to_end_and_cached_rerun(tmp_path, city, segment, settings,
 
     # --- xlsx ----------------------------------------------------------------------
     wb = load_workbook(final["outputs"]["xlsx"])
-    assert wb.sheetnames == ["leads", "excluded", "coverage", "sources", "evidence"]
+    assert wb.sheetnames == ["leads", "review", "excluded", "coverage", "sources",
+                             "kpi_definitions", "evidence", "contacts"]
     leads = list(wb["leads"].iter_rows(values_only=True))
     assert list(leads[0]) == LEAD_COLUMNS
     for col in ("name", "address", "postcode", "website", "phone", "google_place_id",

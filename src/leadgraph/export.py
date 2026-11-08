@@ -15,13 +15,25 @@ KPI_COLUMNS = [
     "tenant_portal_or_app", "software_mentioned", "metering_provider_mentioned",
     "remote_reading_or_uvi_mentioned", "association_membership", "employee_count",
 ]
+CONTACT_SUMMARY = ["top_contact_name", "top_contact_role", "top_contact_email",
+                   "top_contact_email_type", "top_contact_linkedin", "contacts_count"]
 LEAD_COLUMNS = [
-    "name", "address", "postcode", "website", "phone", "google_place_id", "google_rating",
-    "google_review_count", "is_property_manager", "classification_category",
-    "classification_reason", *KPI_COLUMNS, "data_completeness", "discovery_sources",
-    "needs_review", "review_reasons", "id",
+    "name", "tier", "fit_score", "data_completeness", "website", "phone", "address", "postcode",
+    *CONTACT_SUMMARY, *KPI_COLUMNS, "is_property_manager", "classification_category",
+    "classification_reason", "google_rating", "google_review_count", "google_place_id",
+    "discovery_sources", "needs_review", "review_reasons", "score_breakdown", "id",
 ]
+REVIEW_COLUMNS = ["name", "tier", "fit_score", "review_reasons", "website", "top_contact_email",
+                  "is_property_manager", "classification_category", "classification_reason",
+                  "id"]
 EVIDENCE_COLUMNS = ["name", "field", "value", "source_url", "evidence", "confidence", "id"]
+CONTACT_COLUMNS = ["company", "name", "role", "email", "email_type", "linkedin_url",
+                   "linkedin_verified", "source_url", "company_id"]
+KPI_DEF_COLUMNS = ["column", "definition", "why", "source", "weight"]
+TIER_FILLS = {"A": PatternFill("solid", fgColor="C6EFCE"),
+              "B": PatternFill("solid", fgColor="FFEB9C"),
+              "C": PatternFill("solid", fgColor="E7E6E6")}
+TIER_ORDER = {"A": 0, "B": 1, "C": 2}
 EXCLUDED_COLUMNS = ["name", "reason", "address", "postcode", "website", "google_place_id", "source"]
 
 HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -52,11 +64,28 @@ def _write_sheet(wb: Workbook, title: str, columns: list[str], rows: list[dict[s
 
 
 def flatten(company: dict[str, Any]) -> dict[str, Any]:
-    """Company dict with KPI values lifted to top-level columns."""
+    """Company dict with KPI values and the top contact lifted to top-level columns."""
     row = dict(company)
     for f in KPI_COLUMNS:
         row[f] = ((company.get("kpis") or {}).get(f) or {}).get("value")
+    contacts = company.get("contacts") or []
+    top = contacts[0] if contacts else {}
+    row.update({"top_contact_name": top.get("name"), "top_contact_role": top.get("role"),
+                "top_contact_email": top.get("email"),
+                "top_contact_email_type": top.get("email_type"),
+                "top_contact_linkedin": top.get("linkedin_url"),
+                "contacts_count": len(contacts)})
     return row
+
+
+def contact_rows(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{"company": c["name"], "company_id": c["id"], **p}
+            for c in companies for p in c.get("contacts") or []]
+
+
+def sort_leads(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda r: (TIER_ORDER.get(r.get("tier") or "", 3),
+                                       -(r.get("fit_score") or 0), r.get("name") or ""))
 
 
 def evidence_rows(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -71,8 +100,17 @@ def evidence_rows(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def leads_and_excluded(companies: list[dict[str, Any]], excluded: list[dict[str, Any]]
                        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    leads = [flatten(c) for c in companies if c.get("is_property_manager") is not False]
+    """leads = classified property managers, best first; excluded = filtered + rejected."""
+    leads = sort_leads([flatten(c) for c in companies if c.get("is_property_manager") is True])
     return leads, excluded
+
+
+def review_rows(companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Review queue: flagged leads plus companies whose classification failed."""
+    rows = [flatten(c) for c in companies
+            if c.get("is_property_manager") is None
+            or (c.get("is_property_manager") and c.get("needs_review"))]
+    return sort_leads(rows)
 
 
 SOURCE_COLUMNS = [
@@ -129,17 +167,32 @@ def coverage_blocks(cov: dict[str, Any]) -> list[Block]:
     ]
 
 
+def _color_tiers(wb: Workbook, sheet: str, columns: list[str]) -> None:
+    ws = wb[sheet]
+    col = columns.index("tier") + 1
+    for row in range(2, ws.max_row + 1):
+        cell = ws.cell(row=row, column=col)
+        if cell.value in TIER_FILLS:
+            cell.fill = TIER_FILLS[cell.value]
+
+
 def write_xlsx(path: Path, companies: list[dict[str, Any]], excluded: list[dict[str, Any]],
                coverage: dict[str, Any] | None = None,
-               sources: list[dict[str, Any]] | None = None) -> None:
+               sources: list[dict[str, Any]] | None = None,
+               kpi_definitions: list[dict[str, Any]] | None = None) -> None:
     leads, excl = leads_and_excluded(companies, excluded)
     wb = Workbook()
     wb.remove(wb.active)
     _write_sheet(wb, "leads", LEAD_COLUMNS, leads)
+    _color_tiers(wb, "leads", LEAD_COLUMNS)
+    _write_sheet(wb, "review", REVIEW_COLUMNS, review_rows(companies))
+    _color_tiers(wb, "review", REVIEW_COLUMNS)
     _write_sheet(wb, "excluded", EXCLUDED_COLUMNS, excl)
     _write_blocks(wb, "coverage", coverage_blocks(coverage or {}))
     _write_sheet(wb, "sources", SOURCE_COLUMNS, sources or [])
+    _write_sheet(wb, "kpi_definitions", KPI_DEF_COLUMNS, kpi_definitions or [])
     _write_sheet(wb, "evidence", EVIDENCE_COLUMNS, evidence_rows(leads))
+    _write_sheet(wb, "contacts", CONTACT_COLUMNS, contact_rows(leads))
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
 

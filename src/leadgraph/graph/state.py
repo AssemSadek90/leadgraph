@@ -44,6 +44,9 @@ class RunState(TypedDict, total=False):
     rejected: list[dict[str, Any]]  # classified as not a property manager
     researched: Annotated[list[dict[str, Any]], operator.add]  # one item per research branch
     research_stats: dict[str, Any]
+    contact_stats: dict[str, Any]
+    score_stats: dict[str, Any]
+    validation_stats: dict[str, Any]
     rounds: list[dict[str, Any]]
     saturation: list[dict[str, Any]]
     coverage: dict[str, Any]
@@ -61,6 +64,7 @@ class Deps:
     fetcher: Any  # Fetcher
     llm: Any  # LLM
     search: Any = None  # SerperClient; None disables the scout's web_search tool
+    resolver: Any = None  # DNS resolver for MX checks; None → dnspython (tests inject a fake)
 
 
 @dataclass

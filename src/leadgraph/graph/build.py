@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from leadgraph.graph.nodes.classify import classify
+from leadgraph.graph.nodes.contacts import contacts
 from leadgraph.graph.nodes.coverage_loop import (
     expand_queries,
     measure_yield,
@@ -20,6 +21,7 @@ from leadgraph.graph.nodes.discovery import (
     route_after_plan,
 )
 from leadgraph.graph.nodes.export import export
+from leadgraph.graph.nodes.finalize import score, validate
 from leadgraph.graph.nodes.research import (
     ResearchTask,
     research_agent,
@@ -45,8 +47,9 @@ def build_graph(checkpointer=None):
     Round 1:  plan_sweep → scout_sources → approve_sources → [places_sweep ∥ extract_lists]
     Round 2+: plan_sweep → [places_sweep ∥ extract_lists]
     Then:     merge_dedupe → measure_yield → expand_queries → plan_sweep … or → place_details
-    Finally:  place_details → classify → Send(research_agent) × N → verify_evidence → export
-    `enrich`: START → prepare_enrich → Send(research_agent) × N → verify_evidence → export
+    Finally:  place_details → classify → Send(research_agent) × N → verify_evidence
+              → contacts → score → validate → export   (discover: classify → export)
+    `enrich`: START → prepare_enrich → Send(research_agent) × N → verify_evidence → …
     """
     g = StateGraph(RunState, context_schema=RunContext)
     g.add_node("plan_sweep", plan_sweep)
@@ -62,6 +65,9 @@ def build_graph(checkpointer=None):
     g.add_node("prepare_enrich", prepare_enrich)
     g.add_node("research_agent", research_agent, input_schema=ResearchTask)
     g.add_node("verify_evidence", verify_evidence)
+    g.add_node("contacts", contacts)
+    g.add_node("score", score)
+    g.add_node("validate", validate)
     g.add_node("export", export)
 
     g.add_conditional_edges(START, route_start, ["plan_sweep", "prepare_enrich"])
@@ -82,6 +88,9 @@ def build_graph(checkpointer=None):
     g.add_conditional_edges("prepare_enrich", route_research,
                             ["research_agent", "verify_evidence", "export"])
     g.add_edge("research_agent", "verify_evidence")
-    g.add_edge("verify_evidence", "export")
+    g.add_edge("verify_evidence", "contacts")
+    g.add_edge("contacts", "score")
+    g.add_edge("score", "validate")
+    g.add_edge("validate", "export")
     g.add_edge("export", END)
     return g.compile(checkpointer=checkpointer)
