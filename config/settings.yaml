@@ -1,0 +1,25 @@
+# Run defaults. CLI flags override these.
+fetch:
+  user_agent: "LeadGraphBot/0.1 (research prototype; respects robots.txt)"
+  timeout_s: 15
+  per_domain_interval_s: 1.0     # max 1 request / second / domain
+  global_concurrency: 8
+  max_retries: 3
+  max_bytes: 3000000
+
+llm:
+  concurrency: 6
+  temperature: 0
+  max_retries: 3
+  homepage_chars: 2000           # text passed to classify
+
+budget:
+  max_places_requests: 300
+  max_llm_cost_usd: 2.0
+
+places:
+  page_size: 20
+  max_pages: 3                   # Text Search returns at most 60 results across pages
+  language_code: de
+  region_code: DE
+  concurrency: 4

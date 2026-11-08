@@ -1,0 +1,15 @@
+name: berlin
+label: Berlin
+# Bounding box of the city (south-west / north-east corners).
+bbox: { south: 52.3383, west: 13.0884, north: 52.6755, east: 13.7612 }
+
+# Small rectangles for test runs (--area <name>).
+test_areas:
+  mitte: { south: 52.5050, west: 13.3650, north: 52.5400, east: 13.4250 }
+
+# Valid postcodes. Berlin uses 10115–14199 (prefixes 10–14); 14200+ is Brandenburg
+# (e.g. Potsdam 14467), so a numeric range is stricter than the bare prefix.
+postcode_prefixes: ["10", "11", "12", "13", "14"]
+postcode_ranges: [[10115, 14199]]
+# If Places returns a locality, it must be one of these.
+locality_names: [Berlin]

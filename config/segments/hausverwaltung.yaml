@@ -1,0 +1,50 @@
+name: hausverwaltung
+label: Hausverwaltungen (property management companies)
+
+# Places Text Search query variants. M1 uses only the first one.
+queries:
+  - Hausverwaltung
+  - Immobilienverwaltung
+  - WEG-Verwaltung
+  - Mietverwaltung
+  - Hausverwaltung GmbH
+
+# Classification categories the LLM chooses from. Categories listed in
+# `include_categories` count as is_property_manager = true.
+categories:
+  hausverwaltung: Manages residential or mixed buildings for owners (WEG-, Miet- or SEV-Verwaltung), possibly also commercial.
+  makler_mit_verwaltung: Real estate agent that also offers property management services.
+  wohnungsunternehmen: Housing company or cooperative managing its own residential stock.
+  gewerbeverwaltung: Manages only commercial property (offices, retail), no residential.
+  makler: Real estate agent, sales or letting only, no management services.
+  facility_management: Caretaker, cleaning, technical or facility services without commercial property management.
+  other: Anything else (lawyers, banks, construction, software, closed or unrelated businesses).
+include_categories: [hausverwaltung, makler_mit_verwaltung, wohnungsunternehmen]
+
+classification_instructions: |
+  You classify German businesses for a B2B lead list of property management companies
+  (Hausverwaltungen) in {city}. The buyer sells heating-cost metering and billing services,
+  so the relevant question is: does this business manage buildings (WEG-Verwaltung,
+  Mietverwaltung, Sondereigentumsverwaltung) on behalf of owners or as owner?
+  Use only the information given: business name, address, Google Places types and the
+  start of the homepage text. Do not use outside knowledge about the company.
+  If there is no homepage text, decide from the name and types and use low confidence.
+  Pick exactly one category. Keep the reason to one short sentence in English that cites
+  what in the input supports the decision.
+
+# Scoring v1 (Section 3.3 of the build plan). Used from M4.
+weights:
+  units_managed: 30
+  residential_focus: 20
+  digital_maturity: 15
+  reachable_decision_maker: 15
+  berlin_focus: 10
+  association_member: 10
+buckets:
+  units_managed: { ">3000": 1.0, "1000-3000": 0.8, "300-999": 0.5, "<300": 0.2, unknown: 0.3 }
+  residential_focus: { "true": 1.0, "false": 0.0, unknown: 0.5 }
+  digital_maturity: { portal_or_software: 1.0, none_found: 0.3 }
+  reachable_decision_maker: { personal_email: 1.0, named_person: 0.6, none: 0.0 }
+  berlin_focus: { berlin: 1.0, regional: 1.0, national: 0.5, unknown: 0.7 }
+  association_member: { member: 1.0, unknown: 0.4 }
+tiers: { A: 70, B: 45 }

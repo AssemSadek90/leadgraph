@@ -1,0 +1,30 @@
+# Provider → model ids and prices (USD per 1M tokens, standard tier).
+# Prices checked 2026-11-08 on the providers' pricing pages; re-check before relying on cost numbers.
+providers:
+  anthropic:
+    env_key: ANTHROPIC_API_KEY
+    default_model: claude-haiku-5-5
+    structured_method: function_calling
+    models:
+      claude-haiku-5-5:  { input_per_mtok: 0.10, output_per_mtok: 0.50 }
+      claude-sonnet-5-5: { input_per_mtok: 2.00, output_per_mtok: 10.00 }
+      claude-opus-5-5:   { input_per_mtok: 4.00, output_per_mtok: 20.00 }
+  openai:
+    env_key: OPENAI_API_KEY
+    default_model: gpt-6-luna
+    structured_method: json_schema
+    send_temperature: false
+    models:
+      gpt-6-luna:    { input_per_mtok: 0.10, output_per_mtok: 0.50 }
+      gpt-6.1-terra: { input_per_mtok: 1.00, output_per_mtok: 5.00 }
+      gpt-6.1-sol:   { input_per_mtok: 2.00, output_per_mtok: 10.00 }
+
+# Used when a model id is not listed above (cost estimate only).
+fallback_price: { input_per_mtok: 2.00, output_per_mtok: 10.00 }
+
+# Google Places API (New) Text Search with website/phone/rating in the field mask bills as
+# the Enterprise SKU. Estimate only; check your Cloud console for the real number.
+places:
+  env_key: GOOGLE_PLACES_API_KEY
+  usd_per_request: 0.035
+  free_requests_per_month: 1000
