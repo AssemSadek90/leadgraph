@@ -14,6 +14,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M2 | Discovery loop: quadtree sweep, scout agent + approval, list extraction, rounds, Chapman, checkpoints | built, offline tests pass |
 | M3 | Research agent (own domain only, ≤ 6 tool calls) → KPIs with evidence → verify_evidence; Send fan-out; `enrich` | built, offline tests pass |
 | M4 | Contacts (+ LinkedIn via search), scoring v1, validation (liveness, MX, domain match), review queue, all sheets | built, offline tests pass |
+| M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | built; needs the live run |
 
 ## Setup (Windows, PowerShell)
 
@@ -51,6 +52,10 @@ uv run leadgraph resume <run_id>                  # after Ctrl+C, a crash, or a 
 # M3 enrichment of a finished discovery run (research agent + evidence checks)
 uv run leadgraph enrich <discover_run_id> --limit 30 --max-llm-cost 2
 uv run leadgraph recall <run_id>                  # recall probes from eval/recall_probes.csv
+
+# M5 validation sample (10 per tier) → label by hand in Excel → accuracy
+uv run leadgraph sample <enrich_run_id>           # writes eval/gold.csv (gitignored)
+uv run leadgraph accuracy <enrich_run_id>         # per-field accuracy, recall, Chapman
 ```
 
 Useful flags: `--approve all|none|1,3` (non-interactive approval), `--source URL` (add a list

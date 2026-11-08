@@ -246,6 +246,68 @@ def recall_cmd(
     console.print(f"[green]saved:[/green] {run_path / 'recall.json'}")
 
 
+@app.command()
+def sample(
+    run_id: Annotated[str, typer.Argument(help="Run with scored leads (run or enrich).")],
+    per_tier: Annotated[int, typer.Option(help="Leads per tier (A, B, C).")] = 10,
+    rejected: Annotated[int, typer.Option(help="Also sample N rejected companies.")] = 0,
+    out: Annotated[Path, typer.Option(help="Gold file to write.")] = Path("eval/gold.csv"),
+    seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
+    force: Annotated[bool, typer.Option("--force",
+                                        help="Overwrite an existing gold file.")] = False,
+) -> None:
+    """M5: stratified validation sample → eval/gold.csv with blank truth columns to fill."""
+    from leadgraph.config import OUTPUTS_DIR
+    from leadgraph.recall import load_companies
+    from leadgraph.validation_sample import gold_row, stratified_sample, write_gold
+
+    if out.exists() and not force:
+        console.print(f"[red]{out} exists (it may hold your labels). Use --force.[/red]")
+        raise typer.Exit(2)
+    rows = [gold_row(c) for c in stratified_sample(load_companies(OUTPUTS_DIR / run_id),
+                                                   per_tier, rejected, seed)]
+    write_gold(out, rows)
+    console.print(f"[green]{len(rows)} rows → {out}[/green]. Fill true_is_property_manager "
+                  "(y/n), true_units_managed (number or n/a), true_contact_ok (y/n).")
+
+
+@app.command("accuracy")
+def accuracy_cmd(
+    run_id: Annotated[str, typer.Argument(help="Run the gold sample came from.")],
+    gold: Annotated[Path, typer.Option(help="Labelled gold file.")] = Path("eval/gold.csv"),
+) -> None:
+    """M5: per-field accuracy from the labelled sample, plus recall probes and Chapman."""
+    from leadgraph.config import OUTPUTS_DIR
+    from leadgraph.validation_sample import accuracy, read_gold
+
+    run_path = OUTPUTS_DIR / run_id
+    result = accuracy(read_gold(gold))
+    report = json.loads((run_path / "report.json").read_text(encoding="utf-8"))
+    recall_path = run_path / "recall.json"
+    cov = report.get("coverage") or {}
+    result["recall_probes"] = (json.loads(recall_path.read_text(encoding="utf-8"))
+                               if recall_path.exists() else None)
+    result["chapman"] = {k: cov.get(k) for k in ("n1_places", "n2_lists", "m_both", "union",
+                                                 "chapman_estimate", "coverage")}
+    t = Table(title=f"Validation — {run_id} ({result['rows']} labelled rows)")
+    for col in ("field", "n", "correct", "accuracy"):
+        t.add_column(col)
+    for field in ("classification", "units_managed", "contact"):
+        r = result[field]
+        acc = "—" if r["accuracy"] is None else f"{r['accuracy']:.0%}"
+        t.add_row(field, str(r["n"]), str(r["correct"]), acc)
+    if result["recall_probes"]:
+        rp = result["recall_probes"]
+        t.add_row("recall probes", str(rp["probes"]), str(rp["found"]), f"{rp['recall']:.0%}")
+    if cov.get("coverage"):
+        t.add_row("Chapman coverage", "", "",
+                  f"{cov['coverage']:.1%} of ≈{cov['chapman_estimate']}")
+    console.print(t)
+    (run_path / "validation.json").write_text(json.dumps(result, indent=2, ensure_ascii=False),
+                                              encoding="utf-8")
+    console.print(f"[green]saved:[/green] {run_path / 'validation.json'}")
+
+
 def main() -> None:  # pragma: no cover
     app()
 

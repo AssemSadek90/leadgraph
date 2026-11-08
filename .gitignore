@@ -6,3 +6,6 @@ __pycache__/
 .env
 *.egg-info/
 .ruff_cache/
+# hand-labelled data contains scraped names/emails: keep it out of git
+eval/gold.csv
+eval/results/

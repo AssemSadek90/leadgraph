@@ -21,3 +21,31 @@ def test_missing_keys_exit_cleanly(tmp_path, monkeypatch):
 def test_resume_unknown_run(tmp_path):
     result = CliRunner().invoke(cli.app, ["resume", "does-not-exist"])
     assert result.exit_code == 2 and "No run.json" in result.output
+
+
+def test_sample_and_accuracy_commands(tmp_path, monkeypatch):
+    import json
+
+    from leadgraph import config
+    run = tmp_path / "r1"
+    run.mkdir()
+    comps = [{"id": f"c{i}", "name": f"C{i}", "tier": t, "is_property_manager": True,
+              "kpis": None, "contacts": []} for i, t in enumerate("AABBC")]
+    (run / "companies.jsonl").write_text("\n".join(json.dumps(c) for c in comps))
+    (run / "report.json").write_text(json.dumps({"coverage": {"coverage": 0.74,
+                                                              "chapman_estimate": 1348.26}}))
+    monkeypatch.setattr(config, "OUTPUTS_DIR", tmp_path)
+    gold = tmp_path / "gold.csv"
+    r = CliRunner().invoke(cli.app, ["sample", "r1", "--per-tier", "1", "--out", str(gold)])
+    assert r.exit_code == 0 and gold.exists()
+    again = CliRunner().invoke(cli.app, ["sample", "r1", "--out", str(gold)])
+    assert again.exit_code == 2  # never overwrites labels without --force
+    from leadgraph.validation_sample import read_gold, write_gold
+    rows = read_gold(gold)
+    assert len(rows) == 3
+    rows[0].update(true_is_property_manager="y", true_units_managed="n/a")
+    write_gold(gold, rows)
+    r = CliRunner().invoke(cli.app, ["accuracy", "r1", "--gold", str(gold)])
+    assert r.exit_code == 0, r.output
+    result = json.loads((run / "validation.json").read_text())
+    assert result["classification"]["n"] == 1 and result["chapman"]["coverage"] == 0.74
