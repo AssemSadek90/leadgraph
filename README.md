@@ -78,7 +78,8 @@ page by hand, repeatable), `--no-scout`, `--max-rounds N`, `--places-tier pro|en
    website get one Places lookup by name.
 3. **merge_dedupe** (domain → phone → name + postcode), **measure_yield**; if the round still
    added ≥ 2 % new companies, an LLM proposes new query variants and another round runs.
-4. **Place Details** for the final Berlin set (Pro tier), re-dedupe, **classify**, **export**.
+4. **Place Details** only for list entries matched by a name lookup, re-dedupe, **classify**;
+   then (`enrich`) **research agent** per property manager → **verify_evidence** → contacts → score → validate → **export**.
 
 Coverage is measured: per-round yield, a saturation curve, a source overlap matrix and a
 Chapman capture–recapture estimate (Places vs. list sources), plus hand-picked recall probes.
