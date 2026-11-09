@@ -23,7 +23,8 @@ tenacity, diskcache, dnspython, typer, rich, openpyxl, pytest.
    domain, global concurrency from config, 15 s timeout, retries via tenacity.
    Never fetch linkedin.com. The research agent may only fetch the company's own domain.
 6. Cache every HTTP fetch and LLM call (diskcache, keyed by request hash) in outputs/.cache.
-7. API keys come from env vars or CLI args only. Never log, print or write them to disk.
+7. API keys come from env vars or CLI args only (a gitignored `.env` is loaded into the
+   environment at CLI start). Never log, print or write them to disk from code.
 8. outputs/ is gitignored. Never commit scraped data.
 9. Implement only the current milestone's scope. If something out of scope seems necessary,
    stop and ask.

@@ -10,12 +10,14 @@ import pytest
 
 from leadgraph.cache import Cache
 from leadgraph.config import load_city, load_models, load_segment, load_settings
+from leadgraph.envfile import load_env_file
 from leadgraph.graph.nodes.classify import classification_schema
 from leadgraph.llm import LLM, get_model
 from leadgraph.sources.places import PlacesClient
 from leadgraph.usage import Usage
 
 pytestmark = pytest.mark.live
+load_env_file()  # read keys from the gitignored .env, if present
 LIVE_ENV = {k: os.environ.get(k) for k in
             ("GOOGLE_PLACES_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SERPER_API_KEY")}
 

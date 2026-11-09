@@ -344,6 +344,9 @@ def eval_cmd(
 
 
 def main() -> None:  # pragma: no cover
+    from leadgraph.envfile import load_env_file
+
+    load_env_file()  # gitignored .env → environment (existing variables win)
     app()
 
 
