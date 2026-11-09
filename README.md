@@ -17,6 +17,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | built; needs the live run |
 | M7 | Evaluation harness (model comparison on the gold set) + optional Langfuse tracing | built, offline tests pass; needs gold labels |
 | M8 | FastAPI service: runs, SSE progress, source approval, resume, xlsx, review decisions; Dockerfile | built, offline tests pass |
+| M9 | Next.js UI (`web/`): new run with BYOK keys, live run view (stages, counters, saturation chart, source approval), results with tier filter, evidence on hover, review queue, xlsx download | built; checked against real gate runs |
 
 ## Setup (Windows, PowerShell)
 
@@ -111,3 +112,15 @@ curl -o leads.xlsx localhost:8000/runs/<run_id>/export.xlsx
 After a server restart, active runs show `interrupted` (or still `awaiting_approval`); resume
 with `POST /runs/<id>/resume {"keys": {...}}` or approve with keys in the body. Docker:
 `docker build -t leadgraph-api .` then `docker run -p 8000:8000 -v %cd%/outputs:/app/outputs leadgraph-api`.
+
+## Web UI (M9)
+
+```powershell
+uv run uvicorn api.main:app --port 8000        # terminal 1 (needs: uv sync --extra api)
+cd web; npm install; npm run dev                # terminal 2 → http://localhost:3000
+```
+
+New run → live run view (stage timeline, Places/LLM counters, saturation chart from SSE,
+source-approval panel) → results (tier filter, hover a KPI for its verbatim evidence and
+source link, review queue approve/reject, xlsx download). Set `NEXT_PUBLIC_API_URL` if the API
+is not on `http://localhost:8000`.

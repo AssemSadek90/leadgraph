@@ -198,11 +198,20 @@ def snapshot(h: RunHandle, outputs_dir: Path) -> dict[str, Any]:
     if (run_dir / "report.json").exists():
         report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     rounds = [e["round_result"] for e in h.events if e.get("round_result")]
+    usage = h.usage
+    if not usage and report:
+        u = report.get("usage") or {}
+        usage = {"places_requests": u.get("places_requests"), "llm_calls": u.get("llm_calls"),
+                 "llm_cost_usd": u.get("llm_cost_estimate_usd"),
+                 "search_requests": u.get("search_requests")}
+    nodes_done = sorted({e["node"] for e in h.events if e.get("type") == "node_end"}
+                        | set((report or {}).get("timings_s") or {}))
     return {
         "run_id": h.run_id, "status": h.status, "stage": h.stage, "error": h.error,
         "command": h.opts.command, "city": h.opts.city, "area": h.opts.area,
         "provider": h.opts.provider, "model": h.opts.model,
-        "pending_approval": h.pending, "usage": h.usage or (report or {}).get("usage"),
+        "pending_approval": h.pending, "usage": usage, "nodes_done": nodes_done,
+        "researched": ((report or {}).get("research") or {}).get("researched"),
         "rounds": rounds or (report or {}).get("rounds") or [],
         "counts": (report or {}).get("counts"),
         "exports": {"xlsx": (run_dir / "leads.xlsx").exists(),
