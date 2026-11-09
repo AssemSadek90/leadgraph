@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -41,17 +42,29 @@ def approve_interactively(value: dict) -> dict:
         t.add_row(str(i), c.get("source_type") or "", str(c.get("estimated_count") or ""),
                   c["url"], (c.get("notes") or "")[:80])
     console.print(t)
-    sel = typer.prompt("Approve which sources? (e.g. 1,3 / all / none)", default="all")
-    extra = typer.prompt("Extra list URLs to add (comma-separated, Enter to skip)",
-                         default="", show_default=False)
+    try:
+        sel = typer.prompt("Approve which sources? (e.g. 1,3 / all / none)", default="all")
+        extra = typer.prompt("Extra list URLs to add (comma-separated, Enter to skip)",
+                             default="", show_default=False)
+    except (typer.Abort, EOFError):  # no one at the keyboard: pause instead
+        raise NeedsApproval(value) from None
     return {"approved": parse_selection(sel, len(cands)),
             "extra": [u.strip() for u in extra.split(",") if u.strip()]}
 
 
 def _execute(opts: RunOptions, resume: bool = False) -> dict:
     # Ask only when someone can answer; otherwise the run pauses at the approval step.
-    interactive = opts.approve is None and sys.stdin is not None and sys.stdin.isatty()
-    approver = approve_interactively if interactive else None
+    # (On Windows a NUL stdin reports isatty() == True, hence the env switch and EOF handling.)
+    interactive = (opts.approve is None and sys.stdin is not None and sys.stdin.isatty()
+                   and not os.environ.get("LEADGRAPH_NONINTERACTIVE"))
+    if interactive:
+        approver = approve_interactively
+    elif opts.approve is not None:  # e.g. `resume <run> --approve 1,3` answers a paused run
+        def approver(value: dict) -> dict:
+            return {"approved": parse_selection(opts.approve or "", len(value["candidates"])),
+                    "extra": []}
+    else:
+        approver = None
     try:
         return asyncio.run(execute(opts, resume=resume, approver=approver))
     except MissingKey as exc:

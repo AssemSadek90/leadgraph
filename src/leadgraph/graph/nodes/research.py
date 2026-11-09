@@ -16,7 +16,7 @@ from urllib.parse import urljoin, urlparse
 
 from langgraph.runtime import Runtime
 from langgraph.types import Send
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field, create_model, model_validator
 
 from leadgraph import tracing
 from leadgraph.agent import Tool, run_tool_loop
@@ -77,8 +77,20 @@ def _sourced_out(field: str, value_type: Any, desc: str) -> type[BaseModel]:
     )
 
 
+class _LenientKPIs(BaseModel):
+    """Models sometimes send null or the string "null" for a whole field object."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _nulls(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {k: (None if v in (None, "null", "None", "") else v) for k, v in data.items()}
+        return data
+
+
 KPIsOut: type[BaseModel] = create_model(
-    "CompanyKPIsOut", **{f: (_sourced_out(f, t, d), ...) for f, (t, d) in KPI_SPEC.items()})
+    "CompanyKPIsOut", __base__=_LenientKPIs,
+    **{f: (_sourced_out(f, t, d) | None, ...) for f, (t, d) in KPI_SPEC.items()})
 
 # --- prompts ----------------------------------------------------------------------------
 LINK_HINTS = [

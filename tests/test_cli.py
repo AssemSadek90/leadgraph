@@ -49,3 +49,17 @@ def test_sample_and_accuracy_commands(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     result = json.loads((run / "validation.json").read_text())
     assert result["classification"]["n"] == 1 and result["chapman"]["coverage"] == 0.74
+
+
+def test_approval_prompt_without_input_pauses(monkeypatch):
+    import pytest
+
+    from leadgraph.runner import NeedsApproval
+
+    def eof(*a, **k):
+        raise EOFError
+
+    monkeypatch.setattr(cli.typer, "prompt", eof)
+    with pytest.raises(NeedsApproval):
+        cli.approve_interactively({"candidates": [{"url": "https://s.de", "source_type": "other",
+                                                   "estimated_count": 1, "notes": ""}]})

@@ -71,7 +71,7 @@ def run_job(path: Path) -> None:
         history.append({**record, "exit": "refused", "error": str(exc)})
         return
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
-           "NO_COLOR": "1", "COLUMNS": "160"}
+           "NO_COLOR": "1", "COLUMNS": "160", "LEADGRAPH_NONINTERACTIVE": "1"}
     write_status(record)
     t0 = time.monotonic()
     with log.open("w", encoding="utf-8") as out:
