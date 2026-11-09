@@ -9,9 +9,20 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
+from leadgraph.coverage import coverage_stats
 from leadgraph.export import leads_and_excluded, review_rows, write_report, write_xlsx
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
+
+
+def pm_coverage(state: RunState) -> dict[str, Any]:
+    """Chapman on classified property managers only (list sources are PM directories)."""
+    pms = [c for c in state.get("companies") or [] if c.get("is_property_manager")]
+    if not pms:
+        return {}
+    stats = coverage_stats([c["discovery_sources"] for c in pms])
+    stats.pop("overlap_matrix", None)
+    return stats
 
 
 def excluded_rows(state: RunState) -> list[dict[str, Any]]:
@@ -23,6 +34,7 @@ def coverage_sheet_data(state: RunState) -> dict[str, Any]:
         "rounds": state.get("rounds") or [],
         "saturation": state.get("saturation") or [],
         "stats": state.get("coverage") or {},
+        "stats_pm": pm_coverage(state),
         "query_stats": state.get("query_stats") or [],
         "stopped_reason": state.get("stopped_reason"),
     }
@@ -87,6 +99,7 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
                                       for t in state.get("tiles") or []),
             "max_depth": max((t["depth"] for t in state.get("tiles") or []), default=None),
         },
+        "coverage_property_managers": pm_coverage(state),
         "research": state.get("research_stats") or {},
         "contacts": state.get("contact_stats") or {},
         "scoring": state.get("score_stats") or {},

@@ -46,12 +46,25 @@ def homepage_excerpt(title: str | None, main: str, full: str, limit: int) -> str
     return text[:limit]
 
 
+def _sources_line(sources: list[str]) -> str:
+    """'list:vdiv-bb.de' → 'listed on vdiv-bb.de'; Places queries summarised."""
+    lists = [s.removeprefix("list:") for s in sources if s.startswith("list:")]
+    queries = [s.removeprefix("places:") for s in sources if s.startswith("places:")]
+    parts = []
+    if lists:
+        parts.append("listed on " + ", ".join(lists) + " (directories of property managers)")
+    if queries:
+        parts.append(f"Google Maps search ({len(queries)} queries, e.g. '{queries[0]}')")
+    return "; ".join(parts) or "unknown"
+
+
 def user_prompt(company: Company, homepage: str | None, note: str | None) -> str:
     lines = [
         f"Business name: {company.name}",
         f"Address: {company.address or 'unknown'}",
         f"Google Places types: {', '.join(company.google_types) or 'unknown'}",
         f"Website: {company.website or 'none'}",
+        f"Found via: {_sources_line(company.discovery_sources)}",
     ]
     if homepage:
         lines += ["Homepage text (start):", '"""', homepage, '"""']

@@ -230,6 +230,8 @@ GENERIC_NAME_TOKENS = {
     "verwaltungs", "verwaltungsgesellschaft", "weg", "miet", "mietverwaltung", "property",
     "management", "berlin", "und", "der", "die", "das", "von", "fuer", "the", "co", "service",
     "services", "gesellschaft", "real", "estate", "objektverwaltung", "grundstuecksverwaltung",
+    "haus", "grundbesitz", "grundbesitzverwaltung", "hausverwaltungsgesellschaft",
+    "immobilienmanagement", "verwaltungsbuero", "gmbh", "mbh",
 }
 
 
@@ -239,6 +241,6 @@ def name_similarity(a: str, b: str) -> float:
     da, db = ta - GENERIC_NAME_TOKENS, tb - GENERIC_NAME_TOKENS
     if not da or not db:
         return 1.0 if ta == tb and ta else 0.0
-    if da <= db or db <= da:
-        return 1.0
+    if da <= db or db <= da:  # one name's distinctive tokens inside the other's
+        return min(len(da), len(db)) / max(len(da), len(db))
     return len(da & db) / len(da | db)

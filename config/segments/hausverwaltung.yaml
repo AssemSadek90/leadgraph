@@ -30,8 +30,10 @@ classification_instructions: |
   (Hausverwaltungen) in {city}. The buyer sells heating-cost metering and billing services,
   so the relevant question is: does this business manage buildings (WEG-Verwaltung,
   Mietverwaltung, Sondereigentumsverwaltung) on behalf of owners or as owner?
-  Use only the information given: business name, address, Google Places types and the
-  start of the homepage text. Do not use outside knowledge about the company.
+  Use only the information given: business name, address, Google Places types, where the
+  business was found and the start of the homepage text. Do not use outside knowledge about
+  the company. Being listed in a directory of property managers is evidence for the
+  property-management categories unless the name or homepage says otherwise.
   If there is no homepage text, decide from the name and types and use low confidence.
   Pick exactly one category. Keep the reason to one short sentence in English that cites
   what in the input supports the decision.

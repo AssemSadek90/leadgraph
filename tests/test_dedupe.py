@@ -110,3 +110,7 @@ def test_name_similarity():
     assert name_similarity("Hausverwaltung", "Hausverwaltung GmbH") == 1.0
     assert name_similarity("Hausverwaltung", "Immobilienverwaltung") == 0.0
     assert 0 < name_similarity("Alpha Beta Verwaltung", "Alpha Gamma Verwaltung") < 0.5
+    # live recall probe: one shared word is not enough against a longer distinctive name
+    assert name_similarity("Norddeutsche Grundstücksverwaltung Berlin",
+                           "NKI Norddeutsche Kapital Immobilien GmbH") < 0.5
+    assert name_similarity("VIC GmbH", "vic GmbH Haus- & Grundbesitzverwaltung") == 1.0

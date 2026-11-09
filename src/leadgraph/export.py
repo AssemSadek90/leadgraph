@@ -158,7 +158,11 @@ def coverage_blocks(cov: dict[str, Any]) -> list[Block]:
          cov.get("rounds") or []),
         ("Saturation: cumulative unique companies by discovery step",
          ["round", "step", "new", "cumulative"], cov.get("saturation") or []),
-        ("Coverage estimate (Chapman, Places vs. list sources)", ["metric", "value"], kv),
+        ("Coverage estimate (Chapman, Places vs. list sources), all companies",
+         ["metric", "value"], kv),
+        ("Coverage estimate, classified property managers only", ["metric", "value"],
+         [{"metric": k, "value": (cov.get("stats_pm") or {}).get(k)} for k in
+          ("n1_places", "n2_lists", "m_both", "union", "chapman_estimate", "coverage")]),
         ("Source overlap (companies found by both)", ["group", *groups],
          [{"group": g, **matrix[g]} for g in groups]),
         ("Places queries", ["round", "query", "tiles", "pages", "paid_requests", "results",
