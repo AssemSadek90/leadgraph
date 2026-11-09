@@ -244,6 +244,9 @@ async def research_agent(task: ResearchTask, runtime: Runtime[RunContext]) -> di
     company = Company(**task["company"])
     with tracing.company_trace(company.name, company_id=company.id, step="research"):
         result = await research_company(company, runtime.context)
+    runtime.context.emit({"type": "company_researched", "company_id": company.id,
+                          "name": company.name, "error": result.get("error"),
+                          "tool_calls": executed_calls(result.get("trace"))})
     return {"researched": [result]}
 
 

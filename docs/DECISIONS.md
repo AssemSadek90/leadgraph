@@ -34,3 +34,6 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D28 | live | Evidence may be several verbatim fragments (lines or "..."-joined); a quote found on another fetched page of the same company corrects source_url | Models quote list items line by line and sometimes cite the wrong subpage |
 | D29 | live | Anthropic: no `temperature` parameter; KPI objects may be null | Haiku 5.5 rejects `temperature`; it sometimes returns "null" for a whole field |
 | D30 | live | Non-interactive runs pause at source approval (pending_approval.json); progress lines per node on stderr | Overnight runs via the gate runner; visibility during long runs |
+| D31 | M8 | API runs reuse the CLI runner; an approval pause ends the task (status `awaiting_approval`) and `approve-sources` starts a resume task with the decision | No blocked tasks waiting on HTTP; the same checkpoint path as the CLI |
+| D32 | M8 | Keys live in the run handle only; dropped when the run ends; after a restart a run needs keys again (`/resume` or `approve-sources` with `keys`) | BYOK: nothing persisted. `RunOptions` hides keys from its repr |
+| D33 | M8 | Review decisions (approve/reject per lead) are stored in `outputs/<run>/review_decisions.json` | Needed by the M9 review queue; no database in scope |

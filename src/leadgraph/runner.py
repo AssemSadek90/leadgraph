@@ -58,9 +58,9 @@ class RunOptions:
     limit: int | None = None
     provider: str = "anthropic"
     model: str | None = None
-    llm_key: str | None = None
-    places_key: str | None = None
-    search_key: str | None = None
+    llm_key: str | None = field(default=None, repr=False)  # keys never appear in reprs/logs
+    places_key: str | None = field(default=None, repr=False)
+    search_key: str | None = field(default=None, repr=False)
     max_places_requests: int | None = None
     max_llm_cost: float | None = None
     max_search_requests: int | None = None
@@ -206,11 +206,13 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
 
 
 async def execute(opts: RunOptions, *, resume: bool = False, approver: Approver | None = None,
-                  patch_ctx: Callable[[RunContext], None] | None = None) -> dict[str, Any]:
+                  patch_ctx: Callable[[RunContext], None] | None = None,
+                  events: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """Run (or resume) a graph thread until it finishes, asking `approver` at interrupts."""
     if not opts.run_id:
         opts.run_id = make_run_id(opts.city, opts.area, opts.command)
     async with run_context(opts, resumed=resume, patch_ctx=patch_ctx) as ctx:
+        ctx.events = events
         db = run_dir(opts) / "checkpoints.sqlite"
         async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
             graph = build_graph(saver)

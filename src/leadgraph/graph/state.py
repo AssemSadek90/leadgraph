@@ -97,6 +97,14 @@ class RunContext:
     outputs_dir: Path = OUTPUTS_DIR
     run_meta: dict[str, Any] = field(default_factory=dict)
     usage_path: Path | None = None
+    events: Any = None  # optional callable(dict) for live progress (API/SSE); never gets keys
+
+    def emit(self, event: dict[str, Any]) -> None:
+        if self.events is not None:
+            try:
+                self.events({"run_id": self.run_id, **event})
+            except Exception:  # a broken listener must not break the run
+                pass
 
     def save_usage(self) -> None:
         if self.usage_path is not None:

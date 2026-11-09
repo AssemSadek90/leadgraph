@@ -16,6 +16,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M4 | Contacts (+ LinkedIn via search), scoring v1, validation (liveness, MX, domain match), review queue, all sheets | built, offline tests pass |
 | M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | built; needs the live run |
 | M7 | Evaluation harness (model comparison on the gold set) + optional Langfuse tracing | built, offline tests pass; needs gold labels |
+| M8 | FastAPI service: runs, SSE progress, source approval, resume, xlsx, review decisions; Dockerfile | built, offline tests pass |
 
 ## Setup (Windows, PowerShell)
 
@@ -86,3 +87,27 @@ Places (New) prices per 1,000 requests (checked 8 Nov 2026): Text Search Pro $32
 free/month), Text Search Enterprise $35 (1,000 free), Place Details Enterprise $20 (1,000 free).
 The default Pro tier sweeps cheaply and pays for details only for Berlin companies.
 Calibrate on `--area mitte` first: `report.json → query_stats` shows paid requests per query.
+
+## API (M8)
+
+```powershell
+uv sync --extra api
+uv run uvicorn api.main:app --port 8000          # docs at http://localhost:8000/docs
+```
+
+```bash
+# start a discovery run on Mitte (keys stay in the run's memory only)
+curl -X POST localhost:8000/runs -H "Content-Type: application/json" -d '{
+  "command": "discover", "city": "berlin", "area": "mitte",
+  "keys": {"llm": "sk-ant-...", "places": "AIza...", "search": "..."},
+  "budget": {"max_places_requests": 400, "max_llm_cost": 1}}'
+curl -N localhost:8000/runs/<run_id>/events                    # live progress (SSE)
+curl localhost:8000/runs/<run_id>                              # status, pending approval
+curl -X POST localhost:8000/runs/<run_id>/approve-sources -H "Content-Type: application/json" \
+     -d '{"approved": [0, 3]}'
+curl -o leads.xlsx localhost:8000/runs/<run_id>/export.xlsx
+```
+
+After a server restart, active runs show `interrupted` (or still `awaiting_approval`); resume
+with `POST /runs/<id>/resume {"keys": {...}}` or approve with keys in the body. Docker:
+`docker build -t leadgraph-api .` then `docker run -p 8000:8000 -v %cd%/outputs:/app/outputs leadgraph-api`.

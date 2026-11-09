@@ -33,18 +33,25 @@ def timed(name: str) -> Callable[[NodeFn], NodeFn]:
         @functools.wraps(fn)
         async def wrapper(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
             t0 = time.perf_counter()
-            if name != "research_agent":  # one line per node, not per company
-                progress(f"> {name}" + (f" (round {state.get('round')})"
-                                        if state.get("round") else ""))
+            ctx = runtime.context
+            progress(f"> {name}" + (f" (round {state.get('round')})" if state.get("round") else ""))
+            ctx.emit({"type": "node_start", "node": name, "round": state.get("round")})
             out = await fn(state, runtime) or {}
             prev = (state.get("timings") or {}).get(name, 0.0)
             dt = time.perf_counter() - t0
             out["timings"] = {name: round(prev + dt, 3)}
-            runtime.context.save_usage()  # budget counters survive a kill
-            if name != "research_agent":
-                u = runtime.context.deps.usage
-                progress(f"ok {name} {dt:.0f}s | places {u.places_requests} | "
-                         f"LLM ${u.llm_cost_usd:.3f} | {_counts(out)}")
+            ctx.save_usage()  # budget counters survive a kill
+            u = ctx.deps.usage
+            progress(f"ok {name} {dt:.0f}s | places {u.places_requests} | "
+                     f"LLM ${u.llm_cost_usd:.3f} | {_counts(out)}")
+            ctx.emit({
+                "type": "node_end", "node": name, "round": state.get("round"),
+                "seconds": round(dt, 2), "counts": out.get("counts") or {},
+                "round_result": (out.get("rounds") or [None])[-1],
+                "usage": {"places_requests": u.places_requests, "llm_calls": u.llm_calls,
+                          "llm_cost_usd": round(u.llm_cost_usd, 5),
+                          "search_requests": u.search_requests},
+            })
             return out
 
         return wrapper

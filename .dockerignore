@@ -1,0 +1,8 @@
+.venv
+outputs
+.env
+.git
+**/__pycache__
+.pytest_cache
+.ruff_cache
+eval/gold.csv
