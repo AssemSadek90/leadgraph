@@ -14,7 +14,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M2 | Discovery loop: quadtree sweep, scout agent + approval, list extraction, rounds, Chapman, checkpoints | built, offline tests pass |
 | M3 | Research agent (own domain only, ≤ 6 tool calls) → KPIs with evidence → verify_evidence; Send fan-out; `enrich` | built, offline tests pass |
 | M4 | Contacts (+ LinkedIn via search), scoring v1, validation (liveness, MX, domain match), review queue, all sheets | built, offline tests pass |
-| M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | built; needs the live run |
+| M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | full Berlin run done (2,886 companies, 1,385 property managers, 142 A / 534 B / 709 C); sample drawn, labels pending |
 | M7 | Evaluation harness (model comparison on the gold set) + optional Langfuse tracing | built, offline tests pass; needs gold labels |
 | M8 | FastAPI service: runs, SSE progress, source approval, resume, xlsx, review decisions; Dockerfile | built, offline tests pass |
 | M9 | Next.js UI (`web/`): new run with BYOK keys, live run view (stages, counters, saturation chart, source approval), results with tier filter, evidence on hover, review queue, xlsx download | built; checked against real gate runs |
