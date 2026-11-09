@@ -26,15 +26,16 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 cd leadgraph
 uv sync                      # installs Python 3.12 + dependencies into .venv
 
-# keys: persistent user env vars (open a new terminal afterwards)
-setx GOOGLE_PLACES_API_KEY "..."
-setx ANTHROPIC_API_KEY "..."
-setx OPENAI_API_KEY "..."
-setx SERPER_API_KEY "..."
+# keys: a gitignored .env in the repo root (loaded at CLI start; real env vars win)
+#   GOOGLE_PLACES_API_KEY=...
+#   ANTHROPIC_API_KEY=...
+#   OPENAI_API_KEY=...
+#   SERPER_API_KEY=...
+# or persistent user env vars: setx ANTHROPIC_API_KEY "..." (open a new terminal afterwards)
 ```
 
-Keys are read from env vars (or `--places-key` / `--llm-key` / `--search-key`) and are never
-logged or written to disk. The disk cache lives in `outputs/.cache`; each run writes to
+Keys are read from env vars, `.env` (or `--places-key` / `--llm-key` / `--search-key`) and are
+never logged or written to disk by the code. The disk cache lives in `outputs/.cache`; each run writes to
 `outputs/<run_id>/`: `run.json` (options, no keys), `checkpoints.sqlite`, `usage.json`,
 `tiles.jsonl`, `companies.jsonl`, `leads.xlsx`, `report.json`.
 
@@ -86,7 +87,10 @@ Chapman capture–recapture estimate (Places vs. list sources), plus hand-picked
 
 Places (New) prices per 1,000 requests (checked 8 Nov 2026): Text Search Pro $32 (5,000
 free/month), Text Search Enterprise $35 (1,000 free), Place Details Enterprise $20 (1,000 free).
-The default Pro tier sweeps cheaply and pays for details only for Berlin companies.
+Default (D6): the sweep uses the Enterprise mask (website and phone in the search result),
+list-entry lookups use Pro, and Place Details runs only for lookup-only matches. The full
+Berlin discovery (2,886 companies) used 1,194 Enterprise requests. `--places-tier pro` sweeps
+with Pro plus Details for every company.
 Calibrate on `--area mitte` first: `report.json → query_stats` shows paid requests per query.
 
 ## API (M8)
