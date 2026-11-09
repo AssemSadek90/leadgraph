@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -41,11 +42,18 @@ HEADER_FILL = PatternFill("solid", fgColor="305496")
 MAX_WIDTH = 60
 
 
+MAX_CELL_CHARS = 32_767  # Excel's limit per cell
+
+
 def _cell(value: Any) -> Any:
     if isinstance(value, list):
-        return "; ".join(str(v) for v in value)
-    if isinstance(value, dict):
-        return json.dumps(value, ensure_ascii=False)
+        value = "; ".join(str(v) for v in value)
+    elif isinstance(value, dict):
+        value = json.dumps(value, ensure_ascii=False)
+    if isinstance(value, str):
+        # Scraped evidence can hold control characters (e.g. \x0b from <br> runs) that
+        # openpyxl refuses (live Berlin run, 9 Nov: export crashed on one quote).
+        value = ILLEGAL_CHARACTERS_RE.sub(" ", value)[:MAX_CELL_CHARS]
     return value
 
 
