@@ -31,6 +31,14 @@ def host_of(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+def site_root(url: str) -> str:
+    """'https://www.x.de/kontakt/?a=1' → 'https://www.x.de/' (Places often stores deep links)."""
+    if "://" not in url:
+        url = "https://" + url
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}/"
+
+
 def is_blocked(url: str) -> bool:
     host = host_of(url)
     return any(host == d or host.endswith("." + d) for d in BLOCKED_DOMAINS)

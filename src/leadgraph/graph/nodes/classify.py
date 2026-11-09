@@ -14,7 +14,7 @@ from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
 from leadgraph.schema import Company, ExcludedRecord
 from leadgraph.usage import BudgetExceeded
-from leadgraph.web.fetch import DomainNotAllowed
+from leadgraph.web.fetch import DomainNotAllowed, site_root
 
 MIN_MAIN_TEXT = 600  # below this, trafilatura likely dropped nav/footer; use full text
 
@@ -66,7 +66,9 @@ async def classify_company(company: Company, ctx: RunContext,
     homepage, note = None, None
     if company.website:
         try:
-            page = await fetcher.fetch(company.website)
+            page = await fetcher.fetch(site_root(company.website))
+            if not page.ok and site_root(company.website) != company.website:
+                page = await fetcher.fetch(company.website)
         except DomainNotAllowed as exc:
             page, note = None, str(exc)
         if page is not None:

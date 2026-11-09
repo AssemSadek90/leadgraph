@@ -69,3 +69,25 @@ def test_long_evidence_is_truncated_to_contract_limit():
     raw = {"units_managed": item(1200, "u", long_text.strip())}
     kpis, _ = verify_kpis(raw, lambda u: long_text)
     assert kpis.units_managed.value == 1200 and len(kpis.units_managed.evidence) == 300
+
+
+def test_fragments_and_corrected_source_url():
+    page = "Leistungen\nMietverwaltung\nKontakt\nWEG-Verwaltung\nSondereigentumsverwaltung"
+    assert evidence_in_text("Mietverwaltung\nWEG-Verwaltung\nSondereigentumsverwaltung", page)
+    assert evidence_in_text("Mietverwaltung ... Sondereigentumsverwaltung", page)
+    assert not evidence_in_text("Mietverwaltung ... Gewerbeverwaltung", page)
+    assert not evidence_in_text("Miet ... WE", page)  # fragments too short
+    pages = {"https://x.de/": "Start", "https://x.de/ueber": "Wir verwalten 1.500 Einheiten."}
+    raw = {"units_managed": item(1500, "https://x.de/", "Wir verwalten 1.500 Einheiten.")}
+    kpis, reasons = verify_kpis(raw, pages.get, list(pages))
+    assert kpis.units_managed.value == 1500 and reasons == []
+    assert kpis.units_managed.source_url == "https://x.de/ueber"  # corrected
+    kpis, reasons = verify_kpis(raw, pages.get)  # without the page list: rejected
+    assert reasons == ["evidence_not_found:units_managed"]
+
+
+def test_site_root():
+    from leadgraph.web.fetch import site_root
+    assert site_root("https://haveo.de/kontakt/") == "https://haveo.de/"
+    assert site_root("http://www.x.de/fr/contact-fr/?a=1") == "http://www.x.de/"
+    assert site_root("x.de/a") == "https://x.de/"

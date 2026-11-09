@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -48,14 +49,23 @@ def approve_interactively(value: dict) -> dict:
 
 
 def _execute(opts: RunOptions, resume: bool = False) -> dict:
-    approver = approve_interactively if opts.approve is None else None
+    # Ask only when someone can answer; otherwise the run pauses at the approval step.
+    interactive = opts.approve is None and sys.stdin is not None and sys.stdin.isatty()
+    approver = approve_interactively if interactive else None
     try:
         return asyncio.run(execute(opts, resume=resume, approver=approver))
     except MissingKey as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
-    except NeedsApproval:
-        console.print("[yellow]Run paused for source approval.[/yellow]")
+    except NeedsApproval as exc:
+        pending = opts.outputs_dir / (opts.run_id or "") / "pending_approval.json"
+        pending.write_text(json.dumps(exc.args[0], indent=2, ensure_ascii=False),
+                           encoding="utf-8")
+        console.print(f"[yellow]Run paused for source approval.[/yellow] Candidates: {pending}")
+        for i, c in enumerate(exc.args[0].get("candidates", []), start=1):
+            console.print(f"  {i}. [{c.get('source_type')}] {c['url']} "
+                          f"(~{c.get('estimated_count')}) {c.get('notes', '')[:80]}")
+        console.print("Approve with e.g. [bold]--approve 1,3[/bold] on resume.")
     except KeyboardInterrupt:
         console.print("[yellow]Interrupted.[/yellow]")
     console.print(f"Resume with: [bold]uv run leadgraph resume {opts.run_id}[/bold]")

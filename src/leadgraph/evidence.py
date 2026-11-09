@@ -36,7 +36,22 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+FRAGMENT_SPLIT = re.compile(r"\s*(?:\.\.\.|…|\n)\s*")
+MIN_FRAGMENT = 3
+
+
 def evidence_in_text(evidence: str, page_text: str) -> bool:
+    """The quote is on the page — as one contiguous snippet, or (when the model quoted several
+    lines or joined fragments with '...') every fragment is on the page verbatim."""
+    if _contiguous(evidence, page_text):
+        return True
+    fragments = [f for f in FRAGMENT_SPLIT.split(evidence.strip()) if f]
+    if len(fragments) < 2 or any(len(f) < MIN_FRAGMENT for f in fragments):
+        return False
+    return all(_contiguous(f, page_text) for f in fragments)
+
+
+def _contiguous(evidence: str, page_text: str) -> bool:
     ev, page = normalize(evidence), normalize(page_text)
     if not ev:
         return False
@@ -63,12 +78,14 @@ def _empty(value: Any) -> bool:
     return value is None or (isinstance(value, list) and not value)
 
 
-def verify_kpis(raw: dict[str, dict[str, Any]], page_text: Callable[[str], str | None]
-                ) -> tuple[CompanyKPIs, list[str]]:
+def verify_kpis(raw: dict[str, dict[str, Any]], page_text: Callable[[str], str | None],
+                fetched_pages: list[str] | None = None) -> tuple[CompanyKPIs, list[str]]:
     """Check each field of `raw` (field → {value, source_url, evidence, confidence}).
 
     `page_text(url)` returns the cached text of a fetched page, or None if it was never
-    fetched. Returns the verified KPIs (contract model) and review reasons.
+    fetched. If the quote is not on the cited page but is on another page fetched for the
+    same company (`fetched_pages`), the source_url is corrected to that page.
+    Returns the verified KPIs (contract model) and review reasons.
     """
     reasons: list[str] = []
     fields: dict[str, Sourced] = {}
@@ -79,6 +96,11 @@ def verify_kpis(raw: dict[str, dict[str, Any]], page_text: Callable[[str], str |
             fields[name] = Sourced()
             continue
         text = page_text(url) if url else None
+        if ev and (text is None or not evidence_in_text(ev, text)):
+            alt = next((u for u in fetched_pages or [] if u != url
+                        and (t := page_text(u)) is not None and evidence_in_text(ev, t)), None)
+            if alt is not None:
+                url, text = alt, page_text(alt)
         if not ev or text is None or not evidence_in_text(ev, text):
             reasons.append(f"evidence_not_found:{name}")
             fields[name] = Sourced()

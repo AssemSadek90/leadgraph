@@ -114,5 +114,9 @@ async def export(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any
     with (out_dir / "companies.jsonl").open("w", encoding="utf-8") as f:  # all discovered
         for c in state.get("companies", []):
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
+    if state.get("researched"):  # raw agent output + trace, for debugging and evaluation
+        with (out_dir / "research.jsonl").open("w", encoding="utf-8") as f:
+            for r in state["researched"]:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
     return {"outputs": {"xlsx": str(xlsx), "report": str(report_path),
                         "companies": str(out_dir / "companies.jsonl")}}

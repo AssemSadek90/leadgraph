@@ -22,7 +22,7 @@ from leadgraph.graph.state import RunContext, RunState
 from leadgraph.people import EMAIL_RE, email_type, linkedin_match
 from leadgraph.schema import Company, Contact
 from leadgraph.usage import BudgetExceeded
-from leadgraph.web.fetch import DomainNotAllowed, on_domain
+from leadgraph.web.fetch import DomainNotAllowed, on_domain, site_root
 
 CONTACT_PAGE_RE = re.compile(r"impressum|imprint|team|kontakt|contact|ansprechpartner|"
                              r"ueber-uns|uber-uns|über-uns|about|unternehmen", re.I)
@@ -62,7 +62,8 @@ def contact_pages(company: Company, researched: dict[str, Any] | None, fetcher: 
         if url not in seen and CONTACT_PAGE_RE.search(url):
             seen.add(url)
             cached.append(url)
-    home = fetcher.cached(company.website) if company.website else None
+    home = (fetcher.cached(site_root(company.website)) or fetcher.cached(company.website)
+            if company.website else None)
     if home and home.ok:
         for url, text in home.links:
             if (url not in seen and on_domain(url, domain)
@@ -107,8 +108,8 @@ async def contacts_for(company: Company, ctx: RunContext, researched: dict[str, 
         page = fetcher.cached(url)
         if page and page.ok:
             texts[url] = page.full_text
-    if company.website and (home := fetcher.cached(company.website)) and home.ok:
-        texts.setdefault(company.website, home.full_text)
+    if company.website and (home := fetcher.cached(site_root(company.website))) and home.ok:
+        texts.setdefault(home.final_url or home.url, home.full_text)
     stats["pages"] = len(texts)
     if not texts:
         return [], stats
@@ -145,8 +146,10 @@ async def contacts_for(company: Company, ctx: RunContext, researched: dict[str, 
         if email and email not in site_emails:  # emails only if published on the site
             stats["dropped"].append(f"email_not_on_site:{email}")
             email = None
+        role = (p.role or "").strip()
+        role = (role[:77] + "…") if len(role) > 80 else (role or None)
         contacts.append((ROLE_ORDER.index(p.role_category), Contact(
-            name=p.name.strip(), role=p.role, email=email,
+            name=p.name.strip(), role=role, email=email,
             email_type=email_type(email, p.name) if email else None, source_url=src)))
     contacts.sort(key=lambda rc: (rc[0], rc[1].email_type != "personal"))
     ordered = [c for _, c in contacts]

@@ -26,7 +26,13 @@ from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
 from leadgraph.schema import Company
 from leadgraph.usage import BudgetExceeded
-from leadgraph.web.fetch import DomainNotAllowed, on_domain
+from leadgraph.web.fetch import DomainNotAllowed, on_domain, site_root
+
+EXECUTED = ("ok", "error", "bad_args")  # tool calls that used the budget
+
+
+def executed_calls(trace: dict[str, Any] | None) -> int:
+    return sum(t.get("status") in EXECUTED for t in (trace or {}).get("tool_calls", []))
 
 # --- LLM-facing KPI schema (all fields required + nullable: strict-mode friendly) ------
 KPI_SPEC: dict[str, tuple[Any, str]] = {
@@ -91,7 +97,8 @@ FAQ. You have at most {max_calls} tool calls; never fetch the same page twice.
 Facts to find:
 {facts}
 Rules: use only what the fetched pages say. Every value needs a verbatim quote from a page you
-fetched. If a fact is not stated, leave it null. Do not guess or use outside knowledge."""
+fetched: copy one contiguous passage exactly (no paraphrase, no "..." between distant parts).
+If a fact is not stated, leave it null. Do not guess or use outside knowledge."""
 
 RESEARCH_FINAL = ("Now output the facts. For every field give value, source_url (the exact URL "
                   "of the fetched page that states it), evidence (a verbatim quote of at most "
@@ -144,7 +151,9 @@ async def research_company(company: Company, ctx: RunContext) -> dict[str, Any]:
     result: dict[str, Any] = {"company_id": company.id, "domain": domain, "raw": None,
                               "trace": None, "meter": {}, "pages": [], "error": None}
     fetcher = ctx.deps.fetcher
-    home = await fetcher.fetch(company.website, allowed_domain=domain)
+    home = await fetcher.fetch(site_root(company.website), allowed_domain=domain)
+    if not home.ok and site_root(company.website) != company.website:
+        home = await fetcher.fetch(company.website, allowed_domain=domain)
     if not home.ok:
         result["error"] = f"homepage_unavailable:{home.error}"
         result["duration_s"] = round(time.perf_counter() - t0, 2)
@@ -239,7 +248,7 @@ def _page_text_lookup(fetcher: Any):
 def research_summary(results: list[dict[str, Any]], companies: list[Company]) -> dict[str, Any]:
     by_id = {c.id: c for c in companies}
     ok = [r for r in results if r.get("raw") is not None]
-    calls = [len((r.get("trace") or {}).get("tool_calls", [])) for r in ok]
+    calls = [executed_calls(r.get("trace")) for r in ok]
     costs = [r.get("meter", {}).get("cost_usd", 0.0) for r in results]
     filled = [non_null_count(by_id[r["company_id"]].kpis) for r in ok if r["company_id"] in by_id]
     per_field = {f: sum(getattr(by_id[r["company_id"]].kpis, f).value not in (None, [])
@@ -267,7 +276,7 @@ def research_summary(results: list[dict[str, Any]], companies: list[Company]) ->
         "evidence_rejections": rejected,
         "per_company": [{
             "company_id": r["company_id"],
-            "tool_calls": len((r.get("trace") or {}).get("tool_calls", [])),
+            "tool_calls": executed_calls(r.get("trace")),
             "pages": len(r.get("pages", [])), "error": r.get("error"),
             "non_null_kpis": non_null_count(by_id[r["company_id"]].kpis)
             if r["company_id"] in by_id else None,
@@ -291,7 +300,7 @@ async def verify_evidence(state: RunState, runtime: Runtime[RunContext]) -> dict
                                    if not x.startswith(("evidence_not_found:",
                                                         "value_not_in_evidence:", "research_"))]
             if r.get("raw") is not None:
-                kpis, reasons = verify_kpis(r["raw"], page_text)
+                kpis, reasons = verify_kpis(r["raw"], page_text, r.get("pages"))
                 comp.kpis = kpis
                 comp.data_completeness = round(non_null_count(kpis) / len(KPI_FIELDS), 2)
                 comp.review_reasons += reasons

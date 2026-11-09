@@ -14,6 +14,7 @@ from leadgraph.people import email_domain, valid_email_syntax
 from leadgraph.schema import Company
 from leadgraph.score import score_company
 from leadgraph.validate import dns_resolve, has_mx, validate_company
+from leadgraph.web.fetch import site_root
 
 
 @timed("score")
@@ -38,7 +39,8 @@ async def validate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
     async def status(c: Company) -> int | None:
         if not c.website:
             return None
-        page = fetcher.cached(c.website) or await fetcher.fetch(c.website)
+        page = (fetcher.cached(site_root(c.website)) or fetcher.cached(c.website)
+                or await fetcher.fetch(site_root(c.website)))
         if page.error == "robots_disallowed":
             return 200  # site is up; we just may not read it
         return page.status

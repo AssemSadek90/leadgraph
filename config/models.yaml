@@ -5,6 +5,7 @@ providers:
     env_key: ANTHROPIC_API_KEY
     default_model: claude-haiku-5-5
     structured_method: function_calling
+    send_temperature: false        # live gate 9 Nov: Haiku 5.5 rejects "temperature"
     models:
       claude-haiku-5-5:  { input_per_mtok: 0.10, output_per_mtok: 0.50 }
       claude-sonnet-5-5: { input_per_mtok: 2.00, output_per_mtok: 10.00 }
