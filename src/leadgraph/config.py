@@ -60,6 +60,7 @@ class SegmentConfig(BaseModel):
     buckets: dict[str, dict[str, float]] = {}
     tiers: dict[str, float] = {}
     kpi_definitions: list[dict[str, Any]] = []
+    expansion_must_match: str | None = None
 
 
 class ModelPrice(BaseModel):
@@ -123,7 +124,8 @@ class BudgetSettings(BaseModel):
 
 
 class PlacesSettings(BaseModel):
-    tier: Literal["pro", "enterprise"] = "pro"
+    tier: Literal["pro", "enterprise"] = "enterprise"  # sweep
+    lookup_tier: Literal["pro", "enterprise"] = "pro"  # list-entry name lookups
     page_size: int = 20
     max_pages: int = 3
     language_code: str = "de"

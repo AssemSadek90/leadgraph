@@ -9,7 +9,7 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D3 | M1 | LLM-facing models have only required, unconstrained fields | Works with OpenAI strict json_schema and Anthropic tool use without a flattened copy |
 | D4 | M1 | `send_temperature: false` for OpenAI in models.yaml | Newer reasoning models reject a non-default temperature |
 | D5 | M1 | selectolax `lexbor` backend | The default `modest` backend is removed in selectolax 1.x |
-| D6 | M2 | **Places tier `pro` (default):** sweep with the Pro field mask, then Place Details (website, phone, rating, reviews) only for deduplicated Berlin companies; `--places-tier enterprise` restores the plan's mask | Text Search Pro has 5,000 free requests/month vs 1,000 for Enterprise; details are paid only for companies that survive the city filter. Approved by Asem on 8 Nov |
+| D6 | M2 | **Places tiers (revised 9 Nov after the live Mitte run):** sweep with the Enterprise mask (website/phone for 20 results per page), list-entry name lookups with the Pro mask, Place Details only for lookup-only matches. `--places-tier pro` sweeps with Pro + Details for every company | Mitte: ~0.28 pages per unique company and only ~30 % of Places-only results are property managers, so one Details call per company (Pro sweep, approved 8 Nov) cost more than Enterprise pages. Each SKU has its own free monthly cap (Enterprise 1,000, Pro 5,000, Details 1,000) |
 | D7 | M2 | Eager split: tiles larger than 6 km split after one full page | The 4 children re-cover the tile anyway; saves 2 paid pages per large tile |
 | D8 | M2 | Round 1 order: scout → approval → (Places sweep ∥ list extraction) | The one human step comes first, so the long sweep can run unattended overnight |
 | D9 | M2 | Yield uses counts (cumulative unique before/after), not company ids | Ids can change when a later record adds a website (hash id → domain id) |
@@ -29,3 +29,8 @@ Short log of choices made while building, with the reason. Useful for the Task 3
 | D23 | M7 | Eval models come from `eval_models` in models.yaml (default: Haiku 5.5, Sonnet 5.5, gpt-6-luna), not every listed model | Comparing Opus-class models on every lead is costly with little interview value |
 | D24 | M7 | Contact accuracy in eval: `true_contact_name` if labelled, else agreement with the original contact marked correct/incorrect | The gold set labels one run's contact; this extends it to other models without relabelling |
 | D25 | M7 | Langfuse and matplotlib are an optional `eval` extra; tracing is a no-op without keys | The core pipeline stays lean; traces are opt-in |
+| D26 | live | Query expansion keeps only phrases matching `expansion_must_match` (verwalt / eigentum / WEG) | Mitte run: "Property Management" added 115 companies, mostly agents and consultants |
+| D27 | live | Classify, research, contacts and liveness start at the site root | Places `websiteUri` is often a deep link (/kontakt/, /fr/contact-fr/) |
+| D28 | live | Evidence may be several verbatim fragments (lines or "..."-joined); a quote found on another fetched page of the same company corrects source_url | Models quote list items line by line and sometimes cite the wrong subpage |
+| D29 | live | Anthropic: no `temperature` parameter; KPI objects may be null | Haiku 5.5 rejects `temperature`; it sometimes returns "null" for a whole field |
+| D30 | live | Non-interactive runs pause at source approval (pending_approval.json); progress lines per node on stderr | Overnight runs via the gate runner; visibility during long runs |

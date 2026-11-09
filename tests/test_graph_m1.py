@@ -72,6 +72,7 @@ async def run_once(tmp_path, city, segment, settings, models, run_id, chat):
 
 @respx.mock
 async def test_m1_end_to_end_and_cached_rerun(tmp_path, city, segment, settings, models):
+    settings.places.tier = "pro"  # exercise the Pro sweep + Place Details path
     fake = PlacesFake(places_pages())
     respx.post(PLACES_URL).mock(side_effect=fake)
     details = DetailsFake(places_pages()[0])

@@ -39,9 +39,10 @@ SWEEP = {
 }
 LOOKUP = {"Kiez Verwaltung Berlin": [14], "Hausverwaltung Nummer 9 GmbH Berlin": [9]}
 EXPANSIONS = {  # keyed by number of queries tried so far (deterministic across resumes)
+    # "Immobilienmanagement" is dropped by expansion_must_match, "hausverwaltung" is a repeat
     5: ["Objektverwaltung", "Immobilienmanagement", "Sondereigentumsverwaltung", "hausverwaltung"],
-    8: ["Grundstücksverwaltung", "Hausmeisterservice Verwaltung"],
-    10: ["Wohnungsverwaltung"],
+    7: ["Grundstücksverwaltung", "Hausmeisterservice Verwaltung"],
+    9: ["Wohnungsverwaltung"],
 }
 
 DIR1_P1 = html_page("HV Verzeichnis", """
@@ -57,7 +58,7 @@ MAKLER_HTML = html_page("Makler", "<p>Makler für den Verkauf Ihrer Immobilie.</
 
 class QueryPlaces:
     def __init__(self):
-        self.fail_once = {"Immobilienmanagement"}
+        self.fail_once = {"Sondereigentumsverwaltung"}
         self.queries: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -192,11 +193,12 @@ async def test_discovery_loop_with_approval_crash_and_resume(tmp_path, models):
 
     # rounds and stop rule
     rounds = report["rounds"]
-    assert [r["new_unique"] for r in rounds] == [15, 1, 0, 0]
-    assert rounds[0]["yield"] is None and rounds[1]["yield"] == pytest.approx(1 / 15)
+    # Enterprise sweep returns websites, so the DIR1 entry for P1 merges with P1 in round 1
+    assert [r["new_unique"] for r in rounds] == [14, 1, 0, 0]
+    assert rounds[0]["yield"] is None and rounds[1]["yield"] == pytest.approx(1 / 14)
     assert "saturated" in report["stopped_reason"]
-    assert report["queries_tried"][5:] == ["Objektverwaltung", "Immobilienmanagement",
-                                           "Sondereigentumsverwaltung", "Grundstücksverwaltung",
+    assert report["queries_tried"][5:] == ["Objektverwaltung", "Sondereigentumsverwaltung",
+                                           "Grundstücksverwaltung",
                                            "Hausmeisterservice Verwaltung", "Wohnungsverwaltung"]
 
     # coverage after details (P1 list entry merges with the Places record by domain)
@@ -206,7 +208,11 @@ async def test_discovery_loop_with_approval_crash_and_resume(tmp_path, models):
     assert cov["overlap_matrix"]["places"]["list:verzeichnis.example"] == 2
 
     # crash + resume: budget counters are cumulative, completed pages were cache hits
-    assert report["usage"]["places_requests"] == 28
+    # sweep (Enterprise): 5 + 3 (one failed) + 2 + 1; lookups (Pro): 2; Place Details: only
+    # the list entry found by lookup alone (P14) — sweep records already carry website/phone
+    assert report["usage"]["places_by_sku"] == {"text_search_enterprise": 11,
+                                                "text_search_pro": 2,
+                                                "place_details_enterprise": 1}
     assert report["usage"]["search_requests"] == 1
     assert report["cache"]["places"]["hits"] >= 1
     assert report["run_id"] == "disc-test" and report["resumed"] is True

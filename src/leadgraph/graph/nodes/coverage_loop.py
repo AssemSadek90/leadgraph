@@ -62,7 +62,10 @@ class QueryExpansion(BaseModel):
 EXPAND_SYSTEM = """You help find every {segment} in {city} with Google Maps text search.
 Propose up to {n} NEW short German search phrases that would surface businesses of this kind
 that the phrases already tried might miss (synonyms, sub-services, legal-form variants).
-Do not repeat or trivially reword a tried phrase. Do not include the city name."""
+Do not repeat or trivially reword a tried phrase. Do not include the city name.
+Every phrase must be German and name the management of buildings for owners (e.g. contain
+"Verwaltung" or "Verwalter"); avoid generic terms like "Immobilien" or English phrases, which
+mostly return estate agents and consultants."""
 
 
 def _norm_query(q: str) -> str:
@@ -84,7 +87,9 @@ async def expand_queries(state: RunState, runtime: Runtime[RunContext]) -> dict[
     new: list[str] = []
     for q in out.queries:
         nq = _norm_query(q)
-        if nq and nq not in seen and len(q) <= 60:
+        pattern = ctx.segment.expansion_must_match
+        if (nq and nq not in seen and len(q) <= 60
+                and (not pattern or re.search(pattern, q, re.IGNORECASE))):
             seen.add(nq)
             new.append(q.strip())
     new = new[:n]
@@ -113,10 +118,10 @@ async def place_details(state: RunState, runtime: Runtime[RunContext]) -> dict[s
         groups = groups[: ctx.limit]
 
     need: list[str] = []
-    if ctx.deps.places is not None and ctx.settings.places.tier == "pro":
+    if ctx.deps.places is not None:
         for g in groups:
-            if any(c.website or c.phone for c in g):
-                continue
+            if any(c.website or c.phone or c.contact_fields for c in g):
+                continue  # already known, or Places was asked and has none
             pid = next((c.google_place_id for c in g if c.google_place_id), None)
             if pid:
                 need.append(pid)

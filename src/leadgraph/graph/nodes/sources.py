@@ -217,7 +217,8 @@ async def lookup_on_places(cand: Candidate, ctx: RunContext) -> Candidate:
     """One Places search by name for list entries without a website (attach place data)."""
     places = await ctx.deps.places.lookup(f"{cand.name} {ctx.city.label}", ctx.city.bbox)
     for p in places:
-        pc = place_to_candidate(p, cand.source, cand.round)
+        pc = place_to_candidate(p, cand.source, cand.round,
+                                contact_fields=ctx.settings.places.lookup_tier == "enterprise")
         if name_similarity(cand.name, pc.name) >= 0.5:
             return cand.model_copy(update={
                 "google_place_id": pc.google_place_id, "address": cand.address or pc.address,
@@ -225,6 +226,7 @@ async def lookup_on_places(cand: Candidate, ctx: RunContext) -> Candidate:
                 "business_status": pc.business_status, "types": pc.types,
                 "primary_type": pc.primary_type, "website": pc.website, "phone": pc.phone,
                 "google_rating": pc.google_rating, "google_review_count": pc.google_review_count,
+                "contact_fields": pc.contact_fields,
             })
     return cand
 

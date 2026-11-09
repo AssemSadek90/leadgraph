@@ -78,7 +78,6 @@ class PlacesClient:
         self._sem = asyncio.Semaphore(settings.concurrency)
         self.tier = settings.tier
         self.field_mask = search_field_mask(settings.tier)
-        self._search_sku = f"text_search_{settings.tier}"
 
     def _body(self, query: str, rect: Rect, page_token: str | None,
               page_size: int | None = None) -> dict[str, Any]:
@@ -120,13 +119,15 @@ class PlacesClient:
         return resp.json()
 
     async def search_page(self, query: str, rect: Rect, page_token: str | None = None,
-                          page_size: int | None = None) -> dict:
+                          page_size: int | None = None, tier: str | None = None) -> dict:
+        tier = tier or self.tier
+        mask, sku = search_field_mask(tier), f"text_search_{tier}"
         body = self._body(query, rect, page_token, page_size)
-        cached = self._cache.get("places", self.field_mask, body)
+        cached = self._cache.get("places", mask, body)
         if cached is not None:
             return cached
-        data = await self._request("POST", self._url, self.field_mask, self._search_sku, body=body)
-        self._cache.set("places", self.field_mask, body, value=data, expire=30 * 86400)
+        data = await self._request("POST", self._url, mask, sku, body=body)
+        self._cache.set("places", mask, body, value=data, expire=30 * 86400)
         return data
 
     async def details(self, place_id: str) -> dict[str, Any]:
@@ -144,7 +145,8 @@ class PlacesClient:
 
     async def lookup(self, name: str, rect: Rect) -> list[dict[str, Any]]:
         """One Text Search page for a business name inside `rect` (list-entry matching)."""
-        data = await self.search_page(name, rect, page_size=self._settings.lookup_page_size)
+        data = await self.search_page(name, rect, page_size=self._settings.lookup_page_size,
+                                      tier=self._settings.lookup_tier)
         return data.get("places", []) or []
 
     async def search(self, query: str, rect: Rect) -> SearchResult:
@@ -172,7 +174,8 @@ def _component(place: dict[str, Any], kind: str) -> str | None:
     return None
 
 
-def place_to_candidate(place: dict[str, Any], source: str, round_: int = 1) -> Candidate:
+def place_to_candidate(place: dict[str, Any], source: str, round_: int = 1,
+                       contact_fields: bool = False) -> Candidate:
     name = (place.get("displayName") or {}).get("text") or "(unnamed)"
     return Candidate(
         name=name,
@@ -189,4 +192,5 @@ def place_to_candidate(place: dict[str, Any], source: str, round_: int = 1) -> C
         business_status=place.get("businessStatus"),
         types=place.get("types") or [],
         primary_type=place.get("primaryType"),
+        contact_fields=contact_fields,
     )

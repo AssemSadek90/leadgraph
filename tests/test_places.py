@@ -19,6 +19,7 @@ RECT = Rect(south=52.50, west=13.36, north=52.54, east=13.43)
 
 @respx.mock
 async def test_pagination_field_mask_and_cache(cache, usage, settings):
+    settings.places.tier = "pro"
     fake = PlacesFake([[make_place(i) for i in range(20)], [make_place(i) for i in range(20, 25)]])
     route = respx.post(PLACES_URL).mock(side_effect=fake)
     async with httpx.AsyncClient() as http:

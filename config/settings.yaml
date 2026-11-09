@@ -36,7 +36,11 @@ agents:
   research_concurrency: 6        # companies researched in parallel (LangGraph max_concurrency)
 
 places:
-  tier: pro                      # pro: cheap sweep + Place Details for Berlin companies; enterprise: plan's mask
+  # Sweep tier. Live Mitte run (9 Nov): ~0.28 pages per unique company, so Enterprise pages
+  # (website+phone for 20 results, 1,000 free/month) beat Pro pages + one Place Details per
+  # company. List-entry lookups stay Pro (5,000 free/month) + Details only for matches.
+  tier: enterprise
+  lookup_tier: pro
   page_size: 20
   max_pages: 3                   # Text Search returns at most 60 results across pages
   language_code: de

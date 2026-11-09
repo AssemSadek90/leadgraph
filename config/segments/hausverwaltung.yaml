@@ -9,6 +9,10 @@ queries:
   - Mietverwaltung
   - Hausverwaltung GmbH
 
+# Query expansion keeps only phrases matching this (live Mitte run, 9 Nov: "Property
+# Management" added 115 companies, mostly estate agents and consultants).
+expansion_must_match: "verwalt|eigentum|\\bweg\\b"
+
 # Classification categories the LLM chooses from. Categories listed in
 # `include_categories` count as is_property_manager = true.
 categories:

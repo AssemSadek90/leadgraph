@@ -80,6 +80,7 @@ class Candidate(BaseModel):
     business_status: str | None = None
     types: list[str] = []
     primary_type: str | None = None
+    contact_fields: bool = False  # website/phone were requested from Places (Enterprise tier)
 
 
 class ExcludedRecord(BaseModel):

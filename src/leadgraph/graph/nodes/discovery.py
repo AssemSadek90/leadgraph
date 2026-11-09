@@ -80,7 +80,8 @@ async def places_sweep(state: RunState, runtime: Runtime[RunContext]) -> dict[st
         for t in tiles:
             tile_logs.append({"round": item["round"], **t.log()})
             for p in t.places:
-                cand = place_to_candidate(p, source, item["round"])
+                cand = place_to_candidate(p, source, item["round"],
+                                          contact_fields=places.tier == "enterprise")
                 candidates.append(cand.model_dump(mode="json"))
                 n += 1
         query_stats.append({
