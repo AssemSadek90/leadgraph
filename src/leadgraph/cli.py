@@ -205,6 +205,10 @@ def enrich(
     model: Annotated[str | None, typer.Option(help="Model id (default from models.yaml).")] = None,
     llm_key: Annotated[str | None, typer.Option(help="LLM API key (default: env var).")] = None,
     max_llm_cost: Annotated[float | None, typer.Option(help="Budget: LLM cost in USD.")] = None,
+    search_key: Annotated[str | None, typer.Option(help="Serper key (default: env var).")] = None,
+    max_search_requests: Annotated[int | None, typer.Option(
+        help="Budget: Serper queries for LinkedIn lookups (one per company with a named "
+             "contact; default from settings.yaml).")] = None,
     run_id: Annotated[str | None, typer.Option(help="Run id (default: generated).")] = None,
 ) -> None:
     """Research agent + evidence checks for every property manager of a discover run."""
@@ -217,6 +221,7 @@ def enrich(
         city=src.city, command="enrich", area=src.area, segment=src.segment,
         provider=provider or src.provider, model=model if (model or provider) else src.model,
         llm_key=llm_key, max_llm_cost=max_llm_cost, limit=limit, source_run=source_run,
+        search_key=search_key, max_search_requests=max_search_requests,
         run_id=run_id, approve="none",
     )
     _summary(_execute(opts))
