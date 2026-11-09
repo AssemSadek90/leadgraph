@@ -52,6 +52,8 @@ export type RunEvent = {
   company_id?: string;
   name?: string;
   error?: string | null;
+  done?: number;
+  total?: number | null;
 };
 export type Sourced = {
   value: unknown;

@@ -98,6 +98,7 @@ class RunContext:
     run_meta: dict[str, Any] = field(default_factory=dict)
     usage_path: Path | None = None
     events: Any = None  # optional callable(dict) for live progress (API/SSE); never gets keys
+    research_progress: dict[str, int] = field(default_factory=dict)  # done / total per run
 
     def emit(self, event: dict[str, Any]) -> None:
         if self.events is not None:

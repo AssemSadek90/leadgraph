@@ -49,7 +49,10 @@ export default function RunPage() {
     ? run.rounds
     : events.flatMap((e) => (e.round_result ? [e.round_result] : []));
   const lastCounts = [...events].reverse().find((e) => e.counts && Object.keys(e.counts).length)?.counts ?? run.counts ?? {};
-  const researched = events.filter((e) => e.type === "company_researched").length;
+  const lastResearched = [...events].reverse().find((e) => e.type === "company_researched");
+  const researched = lastResearched?.done
+    ? `${lastResearched.done}${lastResearched.total ? ` / ${lastResearched.total}` : ""}`
+    : events.filter((e) => e.type === "company_researched").length;
   const u = run.usage ?? {};
 
   return (

@@ -22,7 +22,7 @@ from leadgraph import tracing
 from leadgraph.agent import Tool, run_tool_loop
 from leadgraph.dedupe import normalize_domain
 from leadgraph.evidence import KPI_FIELDS, non_null_count, verify_kpis
-from leadgraph.graph.nodes.common import timed
+from leadgraph.graph.nodes.common import progress, timed
 from leadgraph.graph.state import RunContext, RunState
 from leadgraph.schema import Company
 from leadgraph.usage import BudgetExceeded
@@ -237,6 +237,8 @@ def route_research(state: RunState, runtime: Runtime[RunContext]) -> list[Send] 
         targets = targets[: max(0, ctx.limit - len(state.get("researched") or []))]
     if not targets:
         return "verify_evidence"
+    ctx.research_progress.update(done=0, total=len(targets))
+    progress(f"> research_agent x {len(targets)}")
     return [Send("research_agent", {"company": c.model_dump(mode="json")}) for c in targets]
 
 
@@ -244,9 +246,17 @@ async def research_agent(task: ResearchTask, runtime: Runtime[RunContext]) -> di
     company = Company(**task["company"])
     with tracing.company_trace(company.name, company_id=company.id, step="research"):
         result = await research_company(company, runtime.context)
-    runtime.context.emit({"type": "company_researched", "company_id": company.id,
-                          "name": company.name, "error": result.get("error"),
-                          "tool_calls": executed_calls(result.get("trace"))})
+    ctx = runtime.context
+    p = ctx.research_progress
+    p["done"] = p.get("done", 0) + 1
+    calls = executed_calls(result.get("trace"))
+    if p["done"] % 25 == 0 or p["done"] == p.get("total"):
+        ctx.save_usage()  # live cost on disk; budget counters survive a kill mid fan-out
+        u = ctx.deps.usage
+        progress(f"research {p['done']}/{p.get('total', '?')} | LLM ${u.llm_cost_usd:.3f}")
+    ctx.emit({"type": "company_researched", "company_id": company.id,
+              "name": company.name, "error": result.get("error"), "tool_calls": calls,
+              "done": p["done"], "total": p.get("total")})
     return {"researched": [result]}
 
 
