@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from leadgraph.graph.nodes.sources import parse_selection
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.runner import (
     MissingKey,
     NeedsApproval,
@@ -70,6 +71,11 @@ def _execute(opts: RunOptions, resume: bool = False) -> dict:
     except MissingKey as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
+    except ProviderUnavailable as exc:
+        console.print(f"[red]Stopped: {exc}[/red]")
+        console.print("Finished work is checkpointed. Fix the account (credit, key), then "
+                      f"[bold]uv run leadgraph resume {opts.run_id}[/bold]")
+        raise typer.Exit(3) from None
     except NeedsApproval as exc:
         pending = opts.outputs_dir / (opts.run_id or "") / "pending_approval.json"
         pending.write_text(json.dumps(exc.args[0], indent=2, ensure_ascii=False),

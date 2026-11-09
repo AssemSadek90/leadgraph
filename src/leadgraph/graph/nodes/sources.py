@@ -15,6 +15,7 @@ from leadgraph.agent import Tool, run_tool_loop
 from leadgraph.dedupe import name_similarity, normalize_domain
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.schema import Candidate
 from leadgraph.sources.places import place_to_candidate
 from leadgraph.usage import BudgetExceeded
@@ -262,6 +263,8 @@ async def extract_source(src: dict[str, Any], ctx: RunContext, round_: int
                 stats["errors"].append(f"budget: {exc}")
                 url = None
                 break
+            except ProviderUnavailable:
+                raise
             except Exception as exc:
                 stats["errors"].append(f"extract_error: {type(exc).__name__}")
                 continue

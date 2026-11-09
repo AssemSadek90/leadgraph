@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from leadgraph import config
 from leadgraph.config import load_models
 from leadgraph.envfile import load_env_file
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.runner import MissingKey, NeedsApproval, RunOptions, execute, make_run_id
 
 log = logging.getLogger("leadgraph.api")
@@ -158,6 +159,8 @@ class RunManager:
         except asyncio.CancelledError:
             self.set_status(h, "interrupted", error="server stopped; resume with keys")
             raise
+        except ProviderUnavailable as exc:  # no credit / bad key: resumable once fixed
+            self.set_status(h, "interrupted", error=str(exc))
         except Exception as exc:  # message only: provider errors never contain our keys
             log.warning("run %s failed: %s", h.run_id, type(exc).__name__)
             h.pending = None

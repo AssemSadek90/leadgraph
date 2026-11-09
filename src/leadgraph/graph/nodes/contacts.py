@@ -19,6 +19,7 @@ from leadgraph.dedupe import _LEGAL_RE, normalize_domain
 from leadgraph.evidence import normalize
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.people import EMAIL_RE, email_type, linkedin_match
 from leadgraph.schema import Company, Contact
 from leadgraph.usage import BudgetExceeded
@@ -122,6 +123,8 @@ async def contacts_for(company: Company, ctx: RunContext, researched: dict[str, 
     except BudgetExceeded as exc:
         stats["error"] = f"budget: {exc}"
         return [], stats
+    except ProviderUnavailable:
+        raise
     except Exception as exc:
         stats["error"] = f"{type(exc).__name__}"
         return [], stats

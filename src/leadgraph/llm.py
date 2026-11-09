@@ -7,6 +7,7 @@ estimated cost are recorded in Usage. API keys live only inside the chat-model o
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, TypeVar
 
 from langchain.chat_models import init_chat_model
@@ -32,6 +33,38 @@ M = TypeVar("M", bound=BaseModel)
 
 class StructuredOutputError(RuntimeError):
     pass
+
+
+class ProviderUnavailable(RuntimeError):
+    """The provider refuses every call (no credit, bad key, no access): stop the run.
+
+    Nodes re-raise it instead of recording a per-company error, so the run stops with its
+    checkpoint intact and `leadgraph resume` redoes only the unfinished work.
+    """
+
+
+# Errors that will not go away on retry and affect every later call (live Berlin run,
+# 9 Nov: the Anthropic credit ran out after ~790 of 1,056 companies; every later call 400'd).
+_FATAL_MARKERS = ("credit balance", "insufficient_quota", "exceeded your current quota",
+                  "authentication_error", "permission_error", "invalid x-api-key",
+                  "incorrect api key", "invalid api key")
+_KEYLIKE = re.compile(r"\b(?:sk-[\w\-*]{4,}|AIza[\w\-]{8,})")
+
+
+def is_fatal_provider_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (401, 403):
+        return True
+    msg = str(exc).lower()
+    return any(m in msg for m in _FATAL_MARKERS)
+
+
+def provider_error_message(provider: str, exc: BaseException) -> str:
+    """Short, key-free description (some providers echo a masked key in the message)."""
+    text = _KEYLIKE.sub("[key]", str(exc))
+    return f"{provider} refused the call ({type(exc).__name__}): {text[:300]}"
 
 
 def message_key(m: BaseMessage) -> dict[str, Any]:
@@ -68,6 +101,18 @@ class LLM:
         prov = models_cfg.providers.get(provider)
         self.method = method or (prov.structured_method if prov else "function_calling")
         self._sem = asyncio.Semaphore(concurrency)
+        self.fatal: ProviderUnavailable | None = None  # latched: later calls fail fast
+
+    def _check_fatal(self) -> None:
+        if self.fatal is not None:
+            raise self.fatal
+
+    def _on_error(self, exc: Exception) -> None:
+        self.usage.llm_errors += 1
+        if is_fatal_provider_error(exc):
+            self.fatal = self.fatal or ProviderUnavailable(
+                provider_error_message(self.provider, exc))
+            raise self.fatal from exc
 
     def _record(self, raw: Any, meter: dict[str, float] | None = None) -> tuple[int, int]:
         meta = getattr(raw, "usage_metadata", None) or {}
@@ -110,13 +155,15 @@ class LLM:
             self._hit(meter)
             return messages_from_dict([hit["message"]])[0]
         self.usage.check_llm()
+        self._check_fatal()
         async with self._sem:
             self.usage.check_llm()
+            self._check_fatal()
             try:
                 msg = await self.chat.bind_tools(tools).ainvoke(
                     messages, config={"callbacks": tracing.callbacks()})
-            except Exception:
-                self.usage.llm_errors += 1
+            except Exception as exc:
+                self._on_error(exc)
                 raise
         self._record(msg, meter)
         self.cache.set("llm", *key, value={"message": message_to_dict(msg)})
@@ -130,13 +177,15 @@ class LLM:
             return schema.model_validate(hit["parsed"])
 
         self.usage.check_llm()
+        self._check_fatal()
         runnable = self.chat.with_structured_output(schema, method=self.method, include_raw=True)
         async with self._sem:
             self.usage.check_llm()
+            self._check_fatal()
             try:
                 out = await runnable.ainvoke(messages, config={"callbacks": tracing.callbacks()})
-            except Exception:
-                self.usage.llm_errors += 1
+            except Exception as exc:
+                self._on_error(exc)
                 raise
 
         raw = out.get("raw") if isinstance(out, dict) else None

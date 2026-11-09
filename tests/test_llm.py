@@ -1,7 +1,13 @@
 import pytest
 
 from leadgraph.graph.nodes.classify import classification_schema
-from leadgraph.llm import LLM, get_model
+from leadgraph.llm import (
+    LLM,
+    ProviderUnavailable,
+    get_model,
+    is_fatal_provider_error,
+    provider_error_message,
+)
 from leadgraph.usage import BudgetExceeded, Usage
 from tests.fakes import FakeChat
 from tests.mock_llm_server import MockLLMServer
@@ -66,3 +72,55 @@ async def test_real_provider_path_against_mock_server(provider, model, path, cac
     for f in (tmp_path / ".cache").rglob("*"):
         if f.is_file():
             assert key.encode() not in f.read_bytes()
+
+
+CREDIT_400 = ("Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+              "'message': 'Your credit balance is too low to access the Anthropic API.'}}")
+
+
+class StatusError(Exception):
+    def __init__(self, msg, status_code=None):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+def test_fatal_provider_errors():
+    assert is_fatal_provider_error(StatusError(CREDIT_400, 400))
+    assert is_fatal_provider_error(StatusError("Unauthorized", 401))
+    assert is_fatal_provider_error(StatusError("You exceeded your current quota "
+                                               "(insufficient_quota)", 429))
+    # transient or per-request errors are not fatal
+    assert not is_fatal_provider_error(StatusError("Rate limit reached", 429))
+    assert not is_fatal_provider_error(StatusError("prompt is too long: 210000 tokens", 400))
+    assert not is_fatal_provider_error(TimeoutError("read timeout"))
+    msg = provider_error_message("openai", StatusError(
+        "Incorrect API key provided: sk-proj-abcd****wxyz", 401))
+    assert "sk-proj" not in msg and "[key]" in msg
+
+
+async def test_fatal_error_latches(cache, usage, models, segment):
+    def responder(schema, messages):
+        raise StatusError(CREDIT_400, 400)
+
+    chat = FakeChat(responder)
+    llm = make_llm(chat, cache, usage, models)
+    schema = classification_schema(segment)
+    with pytest.raises(ProviderUnavailable, match="credit balance"):
+        await llm.structured(schema, "sys", "one")
+    with pytest.raises(ProviderUnavailable):  # fails fast, no second request
+        await llm.structured(schema, "sys", "two")
+    assert chat.calls == 1 and usage.llm_errors == 1
+
+
+async def test_credit_error_from_real_sdk(cache, usage, models, segment, monkeypatch):
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    body = {"type": "error", "error": {"type": "invalid_request_error",
+            "message": "Your credit balance is too low to access the Anthropic API."}}
+    with MockLLMServer(ANSWER, error=(400, body)) as srv:
+        chat = get_model("anthropic", "claude-haiku-5-5", "sk-test-SECRET-123", temperature=None,
+                         max_retries=0, base_url=srv.url)
+        llm = make_llm(chat, cache, usage, models)
+        with pytest.raises(ProviderUnavailable) as info:
+            await llm.structured(classification_schema(segment), "system", "user")
+    assert "SECRET" not in str(info.value)

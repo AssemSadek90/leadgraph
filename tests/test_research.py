@@ -16,7 +16,7 @@ from leadgraph.cache import Cache
 from leadgraph.graph.build import build_graph
 from leadgraph.graph.nodes.research import internal_links, link_priority
 from leadgraph.graph.state import Deps, Mode, RunContext
-from leadgraph.llm import LLM
+from leadgraph.llm import LLM, ProviderUnavailable
 from leadgraph.usage import Usage
 from leadgraph.web.fetch import Fetcher
 from tests.fakes import ScriptedChat, tool_call
@@ -229,6 +229,60 @@ async def test_send_fan_out_one_branch_per_property_manager(tmp_path, settings, 
     assert "evidence_not_found:management_types" in by_id["hv-a.de"]["review_reasons"]
     assert by_id["makler.de"]["kpis"] is None and by_id["h-noweb"]["kpis"] is None
 
+
+@respx.mock
+async def test_no_credit_stops_the_fan_out_and_resume_finishes(tmp_path, settings, models,
+                                                               segment, city):
+    """Live Berlin run, 9 Nov: the credit ran out mid fan-out and every later company failed.
+    Now the run stops with its checkpoint, and resume redoes only the unfinished branches."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    pages = {p.name: p.read_text(encoding="utf-8") for p in SITE_A.glob("*.html")}
+    hosts = ("hv-a.de", "hv-b.de", "hv-c.de")
+    for host in hosts:
+        respx.get(f"https://{host}/robots.txt").mock(return_value=httpx.Response(404))
+        for name, html in pages.items():
+            path = "/" if name == "index.html" else f"/{name}"
+            respx.get(f"https://{host}{path}").mock(return_value=httpx.Response(
+                200, text=html, headers={"content-type": "text/html"}))
+
+    def home_of(messages):
+        home = [m.content for m in messages if "Homepage:" in str(m.content)]
+        return next((h for h in hosts if home and h in home[0]), None)
+
+    class NoCredit(Exception):
+        status_code = 400
+
+    def broke(schema, messages):
+        if home_of(messages) == "hv-b.de":
+            raise NoCredit("Error code: 400 - Your credit balance is too low.")
+        return kpi_responder(f"https://{home_of(messages) or 'hv-a.de'}")(schema, messages)
+
+    def ok(schema, messages):
+        if schema.__name__ == "ContactsOut":
+            return {"people": []}
+        return kpi_responder(f"https://{home_of(messages) or 'hv-a.de'}")(schema, messages)
+
+    def script(messages):
+        return AIMessage(content="done")
+
+    graph = build_graph(InMemorySaver())
+    config = {"configurable": {"thread_id": "t1"}, "max_concurrency": 1}
+    comps = [company(h, f"https://{h}/") for h in hosts]
+
+    ctx = make_ctx(tmp_path, settings, models, segment, city, ScriptedChat(broke, script))
+    with pytest.raises(ProviderUnavailable, match="credit balance"):
+        await graph.ainvoke({"run_id": ctx.run_id, "companies": comps}, config, context=ctx)
+    snap = await graph.aget_state(config)
+    assert snap.next  # stopped mid-run, not finished with errors
+
+    ctx2 = make_ctx(tmp_path, settings, models, segment, city, ScriptedChat(ok, script))
+    ctx2.deps.fetcher = ctx.deps.fetcher
+    final = await graph.ainvoke(None, config, context=ctx2)
+    await ctx.deps.fetcher.aclose()
+    assert sorted(r["company_id"] for r in final["researched"]) == sorted(hosts)
+    assert not [r for r in final["researched"] if r.get("error")]
+    assert all(c["kpis"]["units_managed"]["value"] == 1200 for c in final["companies"])
 
 def test_link_priority():
     assert link_priority("https://x.de/impressum", "") == 0

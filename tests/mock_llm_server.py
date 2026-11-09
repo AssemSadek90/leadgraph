@@ -13,9 +13,11 @@ from typing import Any
 
 
 class MockLLMServer:
-    def __init__(self, tool_input: dict[str, Any], tool_name: str = "Classification"):
+    def __init__(self, tool_input: dict[str, Any], tool_name: str = "Classification",
+                 error: tuple[int, dict[str, Any]] | None = None):
         self.tool_input = tool_input
         self.tool_name = tool_name
+        self.error = error  # (status, body): answer every request with this error
         self.requests: list[tuple[str, dict[str, Any], dict[str, str]]] = []
         server = self
 
@@ -26,6 +28,15 @@ class MockLLMServer:
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 server.requests.append((self.path, body, dict(self.headers)))
+                if server.error is not None:
+                    status, payload = server.error
+                    data = json.dumps(payload).encode()
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
                 if self.path.endswith("/messages"):
                     name = body["tools"][0]["name"] if body.get("tools") else server.tool_name
                     resp = {

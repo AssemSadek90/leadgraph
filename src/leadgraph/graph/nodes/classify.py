@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, create_model
 from leadgraph.config import CityConfig, SegmentConfig
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.schema import Company, ExcludedRecord
 from leadgraph.usage import BudgetExceeded
 from leadgraph.web.fetch import DomainNotAllowed, site_root
@@ -98,6 +99,8 @@ async def classify_company(company: Company, ctx: RunContext,
         company.needs_review = True
         company.review_reasons.append("classify_skipped:budget")
         return company
+    except ProviderUnavailable:
+        raise  # stop the run; resume redoes the rest
     except Exception as exc:  # provider errors must not kill the whole run
         company.needs_review = True
         company.review_reasons.append(f"classify_error:{type(exc).__name__}")

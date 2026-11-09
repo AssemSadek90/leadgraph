@@ -24,6 +24,7 @@ from leadgraph.dedupe import normalize_domain
 from leadgraph.evidence import KPI_FIELDS, non_null_count, verify_kpis
 from leadgraph.graph.nodes.common import progress, timed
 from leadgraph.graph.state import RunContext, RunState
+from leadgraph.llm import ProviderUnavailable
 from leadgraph.schema import Company
 from leadgraph.usage import BudgetExceeded
 from leadgraph.web.fetch import DomainNotAllowed, on_domain, site_root
@@ -209,7 +210,9 @@ async def research_company(company: Company, ctx: RunContext) -> dict[str, Any]:
         result["error"] = f"budget: {exc}"
     except DomainNotAllowed as exc:  # homepage redirected off-domain
         result["error"] = f"domain: {exc}"
-    except Exception as exc:  # provider errors must not kill the fan-out
+    except ProviderUnavailable:
+        raise  # no credit / bad key: stop instead of failing every remaining company
+    except Exception as exc:  # one-off provider errors must not kill the fan-out
         result["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
     result["meter"] = meter
     result["duration_s"] = round(time.perf_counter() - t0, 2)
