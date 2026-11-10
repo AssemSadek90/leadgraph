@@ -17,6 +17,7 @@ Deviations: [docs/DECISIONS.md](docs/DECISIONS.md)
 | M5 | Validation helpers: stratified sample → `eval/gold.csv`, per-field accuracy + recall + Chapman | full Berlin run done (2,886 companies, 1,385 property managers, 142 A / 534 B / 709 C); sample drawn, labels pending |
 | M7 | Evaluation harness (model comparison on the gold set) + optional Langfuse tracing | built, offline tests pass; needs gold labels |
 | M8 | FastAPI service: runs, SSE progress, source approval, resume, xlsx, review decisions; Dockerfile | built, offline tests pass |
+| Phase C | Any German city by name (`leadgraph city`, `--city Hamburg`, free-text city in the UI): one Places lookup for the bounding box | built; live: Hamburg, München resolved, 5-company Hamburg run for $0.13 |
 | M9 | Next.js UI (`web/`): new run with BYOK keys, live run view (stages, counters, saturation chart, source approval), results with tier filter, evidence on hover, review queue, xlsx download | built; checked against real gate runs |
 
 ## Setup (Windows, PowerShell)
