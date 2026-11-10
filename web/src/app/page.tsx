@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, type ModelsResponse, type RunSnapshot } from "@/lib/api";
+import { api, citySlug, type ModelsResponse, type RunSnapshot } from "@/lib/api";
 
 const field = "w-full rounded-md border border-line bg-panel px-3 py-2 text-sm";
 const label = "mb-1 block text-xs font-medium uppercase tracking-wide text-muted";
@@ -12,12 +12,13 @@ export default function NewRunPage() {
   const router = useRouter();
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [cities, setCities] = useState<Record<string, string[]>>({});
+  const [cityLabels, setCityLabels] = useState<Record<string, string>>({});
   const [runs, setRuns] = useState<RunSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     command: "discover",
-    city: "berlin",
+    city: "Berlin",
     area: "mitte",
     provider: "anthropic",
     model: "",
@@ -31,14 +32,21 @@ export default function NewRunPage() {
 
   useEffect(() => {
     api.models().then(setModels).catch((e) => setError(String(e)));
-    api.config().then((c) => setCities(c.cities)).catch(() => {});
+    api.config().then((c) => { setCities(c.cities); setCityLabels(c.city_labels ?? {}); }).catch(() => {});
     api.runs().then(setRuns).catch(() => {});
   }, []);
 
   const providerModels = models ? Object.keys(models.providers[form.provider]?.models ?? {}) : [];
   const model = form.model || models?.providers[form.provider]?.default || "";
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
-    setForm({ ...form, [k]: e.target.value, ...(k === "provider" ? { model: "" } : {}) });
+    setForm({
+      ...form,
+      [k]: e.target.value,
+      ...(k === "provider" ? { model: "" } : {}),
+      ...(k === "city" ? { area: "" } : {}), // test areas differ per city
+    });
+  const knownCity = cities[citySlug(form.city)];
+  const areas = knownCity ?? ["center"]; // a city looked up by name gets a 3 km "center" square
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,14 +85,18 @@ export default function NewRunPage() {
           <div>
             <span className={label}>City / area</span>
             <div className="flex gap-2">
-              <select className={field} value={form.city} onChange={set("city")}>
-                {Object.keys(cities).length ? Object.keys(cities).map((c) => <option key={c}>{c}</option>) : <option>berlin</option>}
-              </select>
+              <input className={field} list="known-cities" value={form.city} onChange={set("city")} placeholder="e.g. Hamburg" required maxLength={80} />
+              <datalist id="known-cities">
+                {Object.keys(cities).map((c) => <option key={c} value={cityLabels[c] ?? c} />)}
+              </datalist>
               <select className={field} value={form.area} onChange={set("area")}>
                 <option value="">whole city</option>
-                {(cities[form.city] ?? ["mitte"]).map((a) => <option key={a}>{a}</option>)}
+                {areas.map((a) => <option key={a} value={a}>{a === "center" ? "center (3 km test)" : a}</option>)}
               </select>
             </div>
+            <p className="mt-1 text-xs text-muted">
+              {knownCity ? "Known city." : "Any German city: looked up on Google Maps when the run starts (1 Places request)."}
+            </p>
           </div>
           <div>
             <span className={label}>Provider</span>

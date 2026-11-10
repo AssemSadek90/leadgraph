@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from leadgraph.config import CityNotFound
 from leadgraph.graph.nodes.sources import parse_selection
 from leadgraph.llm import ProviderUnavailable
 from leadgraph.runner import (
@@ -22,10 +23,13 @@ from leadgraph.runner import (
     execute,
     load_run_options,
 )
+from leadgraph.sources.geocode import CityLookupError
 
 app = typer.Typer(add_completion=False, no_args_is_help=True,
                   help="LeadGraph — agentic lead research pipeline.")
 console = Console()
+CITY_HELP = ("Any German city by name (e.g. Hamburg, \"Frankfurt am Main\"), looked up once "
+             "on Google Places; or a config in config/cities/. Test area 'center' = 3 km square.")
 
 
 @app.callback()
@@ -68,7 +72,7 @@ def _execute(opts: RunOptions, resume: bool = False) -> dict:
         approver = None
     try:
         return asyncio.run(execute(opts, resume=resume, approver=approver))
-    except MissingKey as exc:
+    except (MissingKey, CityLookupError, CityNotFound) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
     except ProviderUnavailable as exc:
@@ -128,7 +132,7 @@ def _summary(final: dict) -> None:
 
 @app.command()
 def run(
-    city: Annotated[str, typer.Option(help="City config name (config/cities/<city>.yaml).")],
+    city: Annotated[str, typer.Option(help=CITY_HELP)],
     area: Annotated[str | None, typer.Option(help="Test area from the city config.")] = None,
     segment: Annotated[str, typer.Option(help="Segment preset.")] = "hausverwaltung",
     limit: Annotated[int | None, typer.Option(help="Max companies to classify/export.")] = None,
@@ -158,7 +162,7 @@ def run(
 
 @app.command()
 def discover(
-    city: Annotated[str, typer.Option(help="City config name (config/cities/<city>.yaml).")],
+    city: Annotated[str, typer.Option(help=CITY_HELP)],
     area: Annotated[str | None, typer.Option(help="Test area instead of the whole city.")] = None,
     segment: Annotated[str, typer.Option(help="Segment preset.")] = "hausverwaltung",
     provider: Annotated[str, typer.Option(help="LLM provider: anthropic | openai.")] = "anthropic",
@@ -375,6 +379,71 @@ def eval_cmd(
                   f"{s['latency_per_lead_s']:.1f}", str(s["avg_tool_calls"]))
     console.print(t)
     console.print("[green]wrote[/green] eval/results.md, eval/results.png, " + out["detail"])
+
+
+@app.command("city")
+def city_cmd(
+    name: Annotated[str, typer.Argument(help="City name, e.g. Hamburg or \"Frankfurt am Main\".")],
+    places_key: Annotated[str | None, typer.Option(help="Places key (default: env var).")] = None,
+) -> None:
+    """Look up a city by name (one Google Places request) and save its config."""
+    from leadgraph.config import (
+        OUTPUTS_DIR,
+        city_paths,
+        find_city,
+        load_models,
+        load_settings,
+        save_city,
+    )
+    from leadgraph.sources.geocode import rect_size_km
+
+    city = find_city(name)
+    if city is None:
+        models, settings = load_models(), load_settings()
+        key = places_key or os.environ.get(models.places.env_key)
+        if not key:
+            console.print(f"[red]Google Places key missing: set {models.places.env_key}.[/red]")
+            raise typer.Exit(2)
+        try:
+            looked_up = asyncio.run(_lookup_city(name, key, settings))
+        except CityLookupError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from None
+        city = find_city(looked_up.name)  # a hand-written config for the same city wins
+        if city is None:
+            city = looked_up
+            save_city(city, OUTPUTS_DIR)
+    path = next((p for p in city_paths(city.name) if p.exists()), None)
+    w, h = rect_size_km(city.bbox)
+    t = Table(title=f"City '{city.label}'", show_header=False)
+    t.add_row("id (use with --city)", city.name)
+    t.add_row("Google match", city.resolved_from or "—")
+    t.add_row("bounding box", f"{w:.1f} × {h:.1f} km  ({city.bbox.key()})")
+    t.add_row("test areas (--area)", ", ".join(city.test_areas) or "—")
+    t.add_row("locality filter", ", ".join(city.locality_names) or "—")
+    t.add_row("postcode filter", ", ".join(map(str, city.postcode_ranges or
+                                               city.postcode_prefixes)) or "— (locality only)")
+    t.add_row("config file", str(path) if path else "—")
+    console.print(t)
+
+
+async def _lookup_city(name: str, key: str, settings):  # noqa: ANN001, ANN202
+    import httpx
+
+    from leadgraph.cache import Cache
+    from leadgraph.config import OUTPUTS_DIR
+    from leadgraph.sources.geocode import resolve_city
+    from leadgraph.sources.places import PlacesClient
+    from leadgraph.usage import Usage
+
+    cache = Cache(OUTPUTS_DIR / ".cache")
+    try:
+        async with httpx.AsyncClient() as http:
+            client = PlacesClient(key, http, cache, Usage(max_places_requests=1,
+                                                          max_llm_cost_usd=0), settings.places)
+            return await resolve_city(name, client)
+    finally:
+        cache.close()
 
 
 def main() -> None:  # pragma: no cover

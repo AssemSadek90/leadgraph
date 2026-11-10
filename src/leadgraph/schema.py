@@ -1,8 +1,8 @@
 """Data contract (BUILD_PLAN Section 3.1). This file is the source of truth."""
 
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 T = TypeVar("T")
 
@@ -28,13 +28,23 @@ class CompanyKPIs(BaseModel):
     units_managed: Sourced[int]
     management_types: Sourced[list[Literal["WEG", "MIET", "SEV", "GEWERBE"]]]
     residential_focus: Sourced[bool]
-    portfolio_scope: Sourced[Literal["berlin", "regional", "national"]]
+    portfolio_scope: Sourced[Literal["city", "regional", "national"]]  # city = the run's city
     tenant_portal_or_app: Sourced[bool]
     software_mentioned: Sourced[list[str]]
     metering_provider_mentioned: Sourced[list[str]]
     remote_reading_or_uvi_mentioned: Sourced[bool]
     association_membership: Sourced[list[str]]  # VDIV, IVD, BVI, ...
     employee_count: Sourced[int]
+
+    @field_validator("portfolio_scope", mode="before")
+    @classmethod
+    def _legacy_scope(cls, v: Any) -> Any:
+        # Runs before any-city support (9 Nov 2026) stored "berlin" for city-only portfolios.
+        if isinstance(v, dict) and v.get("value") == "berlin":
+            return {**v, "value": "city"}
+        if isinstance(v, Sourced) and v.value == "berlin":
+            return v.model_copy(update={"value": "city"})
+        return v
 
 
 class Company(BaseModel):

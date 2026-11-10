@@ -102,7 +102,7 @@ export const api = {
   models: () => fetch(`${API}/models`).then((r) => json<ModelsResponse>(r)),
   config: () =>
     fetch(`${API}/config`).then((r) =>
-      json<{ cities: Record<string, string[]>; segments: string[] }>(r),
+      json<{ cities: Record<string, string[]>; city_labels?: Record<string, string>; segments: string[] }>(r),
     ),
   runs: () => fetch(`${API}/runs`).then((r) => json<RunSnapshot[]>(r)),
   run: (id: string) => fetch(`${API}/runs/${id}`).then((r) => json<RunSnapshot>(r)),
@@ -128,3 +128,9 @@ export const api = {
   xlsxUrl: (id: string) => `${API}/runs/${id}/export.xlsx`,
   eventsUrl: (id: string) => `${API}/runs/${id}/events`,
 };
+
+/** Same rule as leadgraph.config.city_slug: "München" → "muenchen", "Frankfurt am Main" → "frankfurt-am-main". */
+export function citySlug(name: string): string {
+  const folded = name.trim().toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+  return folded.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}

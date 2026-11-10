@@ -44,14 +44,14 @@ weights:
   residential_focus: 20
   digital_maturity: 15
   reachable_decision_maker: 15
-  berlin_focus: 10
+  city_focus: 10
   association_member: 10
 buckets:
   units_managed: { ">3000": 1.0, "1000-3000": 0.8, "300-999": 0.5, "<300": 0.2, unknown: 0.3 }
   residential_focus: { "true": 1.0, "false": 0.0, unknown: 0.5 }
   digital_maturity: { portal_or_software: 1.0, none_found: 0.3 }
   reachable_decision_maker: { personal_email: 1.0, named_person: 0.6, none: 0.0 }
-  berlin_focus: { berlin: 1.0, regional: 1.0, national: 0.5, unknown: 0.7 }
+  city_focus: { city: 1.0, regional: 1.0, national: 0.5, unknown: 0.7 }
   association_member: { member: 1.0, unknown: 0.4 }
 tiers: { A: 70, B: 45 }
 
@@ -84,8 +84,8 @@ kpi_definitions:
     source: Services page
     weight: 20
   - column: portfolio_scope
-    definition: berlin, regional (Berlin + surrounding region) or national.
-    why: Berlin-focused managers fit a Berlin-first sales motion.
+    definition: city (only the searched city), regional (the city + surrounding region) or national.
+    why: City-focused managers fit a city-by-city sales motion (Berlin first).
     source: About page
     weight: 10
   - column: tenant_portal_or_app

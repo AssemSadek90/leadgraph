@@ -76,7 +76,9 @@ def build_report(state: RunState, ctx: RunContext) -> dict[str, Any]:
         "finished_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "duration_s": round(time.monotonic() - started, 2) if started else None,
         "config": {
-            "city": ctx.city.name, "area": ctx.area_name, "segment": ctx.segment.name,
+            "city": ctx.city.name, "city_label": ctx.city.label,
+            "city_resolved_from": ctx.city.resolved_from,
+            "area": ctx.area_name, "segment": ctx.segment.name,
             "provider": ctx.provider, "model": ctx.model, "limit": ctx.limit,
         },
         "counts": {**(state.get("counts") or {}), "leads": len(leads), "excluded": len(excluded),

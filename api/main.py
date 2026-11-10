@@ -53,7 +53,8 @@ class Budget(BaseModel):
 
 class RunRequest(BaseModel):
     command: Literal["run", "discover", "enrich"] = "discover"
-    city: str = "berlin"
+    city: str = Field("berlin", min_length=1, max_length=80,
+                      description="Any city name (looked up on Google Places) or a config id")
     segment: str = "hausverwaltung"
     area: str | None = None
     provider: str = "anthropic"
@@ -252,10 +253,13 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
 
     @app.get("/config")
     async def cfg() -> dict[str, Any]:
-        cities = {p.stem: list(config.load_city(p.stem).test_areas)
-                  for p in sorted((config.CONFIG_DIR / "cities").glob("*.yaml"))}
+        """Configured cities and cities looked up by name earlier. Any other city name works
+        too: the run looks it up on Google Places (one request) before it starts."""
+        known = config.list_cities(config.CONFIG_DIR, mgr.outputs_dir)
         segments = [p.stem for p in sorted((config.CONFIG_DIR / "segments").glob("*.yaml"))]
-        return {"cities": cities, "segments": segments}
+        return {"cities": {k: list(c.test_areas) for k, c in known.items()},
+                "city_labels": {k: c.label for k, c in known.items()},
+                "segments": segments}
 
     @app.post("/runs", status_code=202)
     async def create_run(req: RunRequest) -> dict[str, Any]:

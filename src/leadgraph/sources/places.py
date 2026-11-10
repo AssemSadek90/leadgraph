@@ -42,6 +42,10 @@ def search_field_mask(tier: str) -> str:
 
 
 FIELD_MASK = search_field_mask("enterprise")  # the plan's mask
+# City lookup by name: all Text Search Pro fields (viewport = the city's bounding box).
+CITY_FIELD_MASK = ",".join(f"places.{f}" for f in (
+    "id", "displayName", "formattedAddress", "location", "viewport", "types",
+    "addressComponents"))
 DETAILS_FIELD_MASK = ",".join(ENTERPRISE_FIELDS)
 
 
@@ -142,6 +146,17 @@ class PlacesClient:
         self._cache.set("places_details", DETAILS_FIELD_MASK, place_id, params, value=data,
                         expire=30 * 86400)
         return data
+
+    async def find_city(self, name: str) -> list[dict[str, Any]]:
+        """Text Search for a place name without an area (Pro fields incl. viewport)."""
+        body = {"textQuery": name, "pageSize": 5, "languageCode": self._settings.language_code,
+                "regionCode": self._settings.region_code}
+        cached = self._cache.get("places", CITY_FIELD_MASK, body)
+        if cached is None:
+            cached = await self._request("POST", self._url, CITY_FIELD_MASK, "text_search_pro",
+                                         body=body)
+            self._cache.set("places", CITY_FIELD_MASK, body, value=cached, expire=90 * 86400)
+        return cached.get("places", []) or []
 
     async def lookup(self, name: str, rect: Rect) -> list[dict[str, Any]]:
         """One Text Search page for a business name inside `rect` (list-entry matching)."""

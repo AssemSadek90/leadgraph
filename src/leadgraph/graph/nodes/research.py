@@ -45,9 +45,10 @@ KPI_SPEC: dict[str, tuple[Any, str]] = {
                          "commercial property management."),
     "residential_focus": (bool, "True if it mainly manages residential buildings, false if "
                                 "mainly commercial."),
-    "portfolio_scope": (Literal["berlin", "regional", "national"],
-                        "Where the managed properties are: only Berlin, Berlin plus region "
-                        "(e.g. Brandenburg) or several regions, or nationwide."),
+    "portfolio_scope": (Literal["city", "regional", "national"],
+                        "Where the managed properties are: city = only in the city named "
+                        "above, regional = that city plus its surrounding region or several "
+                        "regions, national = nationwide."),
     "tenant_portal_or_app": (bool, "True if it offers an online portal or app for tenants or "
                                    "owners (Mieterportal, Eigentümerportal, App)."),
     "software_mentioned": (list[str], "Property-management software or platforms named on "
@@ -101,8 +102,9 @@ LINK_HINTS = [
 ]
 SKIP_EXT = re.compile(r"\.(pdf|jpe?g|png|gif|svg|webp|zip|docx?|xlsx?|mp4)$", re.I)
 
-RESEARCH_SYSTEM = """You research one German property management company, {name}, on its own
-website ({domain}) for a B2B sales team that sells heating-cost metering and billing.
+RESEARCH_SYSTEM = """You research one German property management company, {name}, found in
+{city}, on its own website ({domain}) for a B2B sales team that sells heating-cost metering and
+billing.
 Tools: fetch_page(url) and list_links(url), only for pages on {domain}; other domains are
 refused. You already have the homepage below. Visit the pages most likely to state the facts,
 most useful first: Impressum, Über uns, Leistungen, Team, Kontakt, Referenzen, Aktuelles/News,
@@ -196,7 +198,7 @@ async def research_company(company: Company, ctx: RunContext) -> dict[str, Any]:
     ]
     facts = "\n".join(f"- {f}: {d}" for f, (_, d) in KPI_SPEC.items())
     system = RESEARCH_SYSTEM.format(name=company.name, domain=domain, facts=facts,
-                                    max_calls=a.research_max_tool_calls)
+                                    city=ctx.city.label, max_calls=a.research_max_tool_calls)
     user = f"Homepage:\n{page_for_agent(home, domain, a.research_page_chars, 40)}"
     meter: dict[str, float] = {}
     try:

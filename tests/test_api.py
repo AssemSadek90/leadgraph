@@ -148,3 +148,15 @@ async def test_api_resume_after_failure(tmp_path, models):
 async def test_api_unknown_run(tmp_path, path):
     async with client_for(RunManager(outputs_dir=tmp_path)) as client:
         assert (await client.get(path)).status_code == 404
+
+
+async def test_config_lists_cities_looked_up_earlier(tmp_path):
+    from leadgraph.config import save_city
+    from leadgraph.sources.geocode import city_from_place
+    from tests.test_geocode import HAMBURG
+
+    save_city(city_from_place(HAMBURG, "Hamburg"), tmp_path)
+    async with client_for(RunManager(outputs_dir=tmp_path)) as client:
+        cfg = (await client.get("/config")).json()
+    assert cfg["cities"] == {"berlin": ["mitte"], "hamburg": ["center"]}
+    assert cfg["city_labels"] == {"berlin": "Berlin", "hamburg": "Hamburg"}

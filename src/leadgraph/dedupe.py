@@ -235,10 +235,15 @@ GENERIC_NAME_TOKENS = {
 }
 
 
-def name_similarity(a: str, b: str) -> float:
-    """0–1 similarity of two business names on their distinctive tokens."""
+def name_similarity(a: str, b: str, extra_generic: frozenset[str] = frozenset()) -> float:
+    """0–1 similarity of two business names on their distinctive tokens.
+
+    `extra_generic`: tokens that say nothing about the business, e.g. the searched city's
+    name ("Hausverwaltung Hamburg" vs "Immobilien Hamburg" must not match on "hamburg").
+    """
+    generic = GENERIC_NAME_TOKENS | extra_generic
     ta, tb = set(normalize_name(a).split()), set(normalize_name(b).split())
-    da, db = ta - GENERIC_NAME_TOKENS, tb - GENERIC_NAME_TOKENS
+    da, db = ta - generic, tb - generic
     if not da or not db:
         return 1.0 if ta == tb and ta else 0.0
     if da <= db or db <= da:  # one name's distinctive tokens inside the other's

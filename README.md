@@ -48,9 +48,14 @@ uv run pytest -m live -s         # live smoke tests: 1 Places page, 1 detail, 1 
 # M1 thin slice
 uv run leadgraph run --city berlin --area mitte --limit 20 --provider anthropic --model claude-haiku-5-5
 
+# Any German city by name: looked up once on Google Places (bounding box + a 3 km "center"
+# test area), saved to outputs/cities/<city>.yaml; Berlin has a hand-written config
+uv run leadgraph city "Hamburg"                   # optional preview: what Google matched
+
 # M2 discovery (asks once which scouted list sources to use, then runs unattended)
 uv run leadgraph discover --city berlin --area mitte --max-places-requests 300
 uv run leadgraph discover --city berlin --max-places-requests 4000 --max-llm-cost 5
+uv run leadgraph discover --city "Frankfurt am Main" --area center --max-places-requests 100
 uv run leadgraph resume <run_id>                  # after Ctrl+C, a crash, or a pause
 
 # M3 enrichment of a finished discovery run (research agent + evidence checks)

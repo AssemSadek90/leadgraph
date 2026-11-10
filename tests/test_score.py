@@ -20,7 +20,7 @@ FIXTURES = {
     # A: 2,500 units · residential · tenant portal · personal email · Berlin · VDIV
     "A": (Company(id="a.de", name="A", kpis=kpis(units_managed=2500, residential_focus=True,
                                                    tenant_portal_or_app=True,
-                                                   portfolio_scope="berlin",
+                                                   portfolio_scope="city",
                                                    association_membership=["VDIV"]),
                   contacts=[person("m.mustermann@a.de", "personal")]), 94.0, "A"),
     # B: everything unknown · named person, no email
@@ -45,7 +45,7 @@ def test_breakdown_fixture_a(segment):
     s = score_company(FIXTURES["A"][0].model_copy(deep=True), segment)
     assert s.score_breakdown == {"units_managed": 24.0, "residential_focus": 20.0,
                                  "digital_maturity": 15.0, "reachable_decision_maker": 15.0,
-                                 "berlin_focus": 10.0, "association_member": 10.0}
+                                 "city_focus": 10.0, "association_member": 10.0}
     assert s.data_completeness == 0.5
 
 

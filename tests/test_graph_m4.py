@@ -50,7 +50,7 @@ def kpis_for(url: str) -> dict:
                                   "evidence": "über 3.500 Wohneinheiten"}
         k["tenant_portal_or_app"] = {"value": True, "source_url": url, "confidence": "high",
                                      "evidence": "Mieterportal rund um die Uhr"}
-        k["portfolio_scope"] = {"value": "berlin", "source_url": url, "confidence": "medium",
+        k["portfolio_scope"] = {"value": "city", "source_url": url, "confidence": "medium",
                                 "evidence": "Wohneinheiten in Berlin"}
         k["association_membership"] = {"value": ["VDIV"], "source_url": url,
                                        "confidence": "high", "evidence": "Mitglied im VDIV"}

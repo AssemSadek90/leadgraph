@@ -24,14 +24,18 @@ from langgraph.types import Command
 from leadgraph.cache import Cache
 from leadgraph.config import (
     OUTPUTS_DIR,
-    load_city,
+    CityNotFound,
+    city_slug,
+    find_city,
     load_models,
     load_segment,
     load_settings,
+    save_city,
 )
 from leadgraph.graph.build import build_graph
 from leadgraph.graph.state import Deps, Mode, RunContext
 from leadgraph.llm import LLM, get_model
+from leadgraph.sources.geocode import resolve_city
 from leadgraph.sources.places import PlacesClient
 from leadgraph.sources.search import SerperClient
 from leadgraph.usage import Usage
@@ -98,7 +102,8 @@ def resolve_key(explicit: str | None, env_var: str, what: str) -> str:
 
 def make_run_id(city: str, area: str | None, command: str = "run") -> str:
     prefix = {"discover": "disc", "enrich": "enr"}.get(command, "run")
-    return f"{prefix}-{city}-{area or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    return (f"{prefix}-{city_slug(city) or 'city'}-{city_slug(area or '') or 'all'}-"
+            f"{datetime.now().strftime('%Y%m%d-%H%M%S')}")
 
 
 def run_dir(opts: RunOptions) -> Path:
@@ -119,9 +124,12 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
                       ) -> AsyncIterator[RunContext]:
     models = load_models()
     settings = load_settings()
-    city = load_city(opts.city)
+    city = find_city(opts.city, outputs_dir=opts.outputs_dir)  # None: look it up by name below
     segment = load_segment(opts.segment)
-    city.area(opts.area)  # validate the area name early
+    if city is not None:
+        city.area(opts.area)  # validate the area name early
+    elif opts.command == "enrich":
+        raise CityNotFound(f"No config for city '{opts.city}' (the source run's city).")
 
     provider_cfg = models.providers.get(opts.provider)
     if provider_cfg is None:
@@ -176,6 +184,16 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
     )
 
     async with httpx.AsyncClient() as api_http:
+        places = PlacesClient(places_key, api_http, cache, usage, settings.places)
+        if city is None:  # any city by name: one cached Places request for its bounding box
+            looked_up = await resolve_city(opts.city, places)
+            city = find_city(looked_up.name, outputs_dir=opts.outputs_dir)  # hand config wins
+            if city is None:
+                city = looked_up
+                save_city(city, opts.outputs_dir)
+            opts.city = city.name
+            city.area(opts.area)
+            (out / "run.json").write_text(json.dumps(opts.public(), indent=2), encoding="utf-8")
         fetcher = Fetcher(settings.fetch, cache, usage)
         try:
             ctx = RunContext(
@@ -184,7 +202,7 @@ async def run_context(opts: RunOptions, *, resumed: bool = False,
                 area_name=opts.area, limit=opts.limit, outputs_dir=opts.outputs_dir,
                 deps=Deps(
                     cache=cache, usage=usage, fetcher=fetcher, llm=llm,
-                    places=PlacesClient(places_key, api_http, cache, usage, settings.places),
+                    places=places,
                     search=SerperClient(search_key, api_http, cache, usage) if search_key else None,
                 ),
                 run_meta={

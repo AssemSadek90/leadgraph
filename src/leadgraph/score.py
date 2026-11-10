@@ -42,7 +42,7 @@ def component_buckets(c: Company) -> dict[str, str]:
         "residential_focus": "unknown" if residential is None else str(residential).lower(),
         "digital_maturity": "portal_or_software" if portal or software else "none_found",
         "reachable_decision_maker": reach,
-        "berlin_focus": scope or "unknown",
+        "city_focus": scope or "unknown",
         "association_member": "member" if member else "unknown",
     }
 

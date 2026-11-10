@@ -12,7 +12,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from leadgraph.agent import Tool, run_tool_loop
-from leadgraph.dedupe import name_similarity, normalize_domain
+from leadgraph.dedupe import name_similarity, normalize_domain, normalize_name
 from leadgraph.graph.nodes.common import timed
 from leadgraph.graph.state import RunContext, RunState
 from leadgraph.llm import ProviderUnavailable
@@ -214,13 +214,18 @@ def entry_to_candidate(e: ListEntry, chunk: str, source: str, source_host: str,
                      address=e.address, postcode=postcode)
 
 
+def city_tokens(ctx: RunContext) -> frozenset[str]:
+    names = [ctx.city.label, *ctx.city.locality_names]
+    return frozenset(t for n in names for t in normalize_name(n).split())
+
+
 async def lookup_on_places(cand: Candidate, ctx: RunContext) -> Candidate:
     """One Places search by name for list entries without a website (attach place data)."""
     places = await ctx.deps.places.lookup(f"{cand.name} {ctx.city.label}", ctx.city.bbox)
     for p in places:
         pc = place_to_candidate(p, cand.source, cand.round,
                                 contact_fields=ctx.settings.places.lookup_tier == "enterprise")
-        if name_similarity(cand.name, pc.name) >= 0.5:
+        if name_similarity(cand.name, pc.name, city_tokens(ctx)) >= 0.5:
             return cand.model_copy(update={
                 "google_place_id": pc.google_place_id, "address": cand.address or pc.address,
                 "postcode": cand.postcode or pc.postcode, "locality": pc.locality,

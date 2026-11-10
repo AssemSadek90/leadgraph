@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,6 +42,7 @@ class CityConfig(BaseModel):
     postcode_prefixes: list[str] = []
     postcode_ranges: list[tuple[int, int]] = []
     locality_names: list[str] = []
+    resolved_from: str | None = None  # Google's address when looked up by name
 
     def area(self, name: str | None) -> Rect:
         if not name:
@@ -174,8 +177,65 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def load_city(name: str, config_dir: Path = CONFIG_DIR) -> CityConfig:
-    return CityConfig.model_validate(_load_yaml(config_dir / "cities" / f"{name}.yaml"))
+_FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+
+
+def city_slug(name: str) -> str:
+    """'Frankfurt am Main' → 'frankfurt-am-main', 'München' → 'muenchen'. Safe as a file name."""
+    s = unicodedata.normalize("NFKD", name.strip().lower().translate(_FOLD))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+
+class CityNotFound(FileNotFoundError):
+    pass
+
+
+def city_paths(name: str, config_dir: Path = CONFIG_DIR,
+               outputs_dir: Path = OUTPUTS_DIR) -> list[Path]:
+    """Hand-written configs win over ones looked up by name (outputs/cities/)."""
+    slug = city_slug(name)
+    return [config_dir / "cities" / f"{slug}.yaml", outputs_dir / "cities" / f"{slug}.yaml"]
+
+
+def find_city(name: str, config_dir: Path = CONFIG_DIR,
+              outputs_dir: Path = OUTPUTS_DIR) -> CityConfig | None:
+    if not city_slug(name):
+        return None
+    for path in city_paths(name, config_dir, outputs_dir):
+        if path.exists():
+            return CityConfig.model_validate(_load_yaml(path))
+    return None
+
+
+def load_city(name: str, config_dir: Path = CONFIG_DIR,
+              outputs_dir: Path = OUTPUTS_DIR) -> CityConfig:
+    city = find_city(name, config_dir, outputs_dir)
+    if city is None:
+        raise CityNotFound(
+            f"No config for city '{name}'. Look it up once with `leadgraph city \"{name}\"` "
+            f"(one Google Places request), or start a discover run: unknown cities are "
+            f"looked up by name.")
+    return city
+
+
+def save_city(city: CityConfig, outputs_dir: Path = OUTPUTS_DIR) -> Path:
+    """Store a city looked up by name (outputs/ is gitignored and per installation)."""
+    path = outputs_dir / "cities" / f"{city.name}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = city.model_dump(mode="json", exclude_none=True)
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def list_cities(config_dir: Path = CONFIG_DIR,
+                outputs_dir: Path = OUTPUTS_DIR) -> dict[str, CityConfig]:
+    """Configured cities first, then cities looked up earlier; slug → config."""
+    out: dict[str, CityConfig] = {}
+    for folder in (config_dir / "cities", outputs_dir / "cities"):
+        for path in sorted(folder.glob("*.yaml")) if folder.exists() else []:
+            out.setdefault(path.stem, CityConfig.model_validate(_load_yaml(path)))
+    return out
 
 
 def load_segment(name: str, config_dir: Path = CONFIG_DIR) -> SegmentConfig:
